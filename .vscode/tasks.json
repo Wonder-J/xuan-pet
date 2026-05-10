@@ -1,0 +1,15 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "desktop-pet: dev",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"dev"
+			],
+			"isBackground": true,
+			"group": "build"
+		}
+	]
+}

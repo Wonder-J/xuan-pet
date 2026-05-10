@@ -1,0 +1,40 @@
+{
+  "name": "desktop-pet",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "dependencies": {
+    "@xuanshen/shared": "workspace:*",
+    "@electron-toolkit/utils": "^3.0.0",
+    "electron-store": "^8.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "electron": "^28.1.0",
+    "electron-builder": "^24.9.1",
+    "electron-vite": "^2.0.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.11"
+  },
+  "build": {
+    "appId": "com.xuanshen.desktop-pet",
+    "productName": "玄神",
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.entertainment"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "files": [
+      "dist/**/*"
+    ]
+  }
+}

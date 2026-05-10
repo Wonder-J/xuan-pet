@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <!-- Body -->
+  <ellipse cx="60" cy="75" rx="40" ry="35" fill="#7c5cfc"/>
+  <!-- Head -->
+  <circle cx="60" cy="40" r="30" fill="#9b82fc"/>
+  <!-- Left ear -->
+  <polygon points="35,20 25,0 45,15" fill="#7c5cfc"/>
+  <!-- Right ear -->
+  <polygon points="85,20 95,0 75,15" fill="#7c5cfc"/>
+  <!-- Left eye -->
+  <ellipse cx="48" cy="38" rx="6" ry="7" fill="white"/>
+  <circle cx="50" cy="38" r="3.5" fill="#333"/>
+  <circle cx="51" cy="36" r="1.5" fill="white"/>
+  <!-- Right eye -->
+  <ellipse cx="72" cy="38" rx="6" ry="7" fill="white"/>
+  <circle cx="70" cy="38" r="3.5" fill="#333"/>
+  <circle cx="71" cy="36" r="1.5" fill="white"/>
+  <!-- Nose -->
+  <ellipse cx="60" cy="47" rx="3" ry="2" fill="#ff9eb1"/>
+  <!-- Mouth -->
+  <path d="M54,52 Q60,58 66,52" stroke="#333" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  <!-- Cheeks -->
+  <circle cx="40" cy="48" r="5" fill="#ff9eb1" opacity="0.4"/>
+  <circle cx="80" cy="48" r="5" fill="#ff9eb1" opacity="0.4"/>
+  <!-- Feet -->
+  <ellipse cx="45" cy="105" rx="12" ry="6" fill="#6a4de8"/>
+  <ellipse cx="75" cy="105" rx="12" ry="6" fill="#6a4de8"/>
+  <!-- Tail -->
+  <path d="M100,75 Q115,60 105,45" stroke="#7c5cfc" stroke-width="6" fill="none" stroke-linecap="round"/>
+</svg>

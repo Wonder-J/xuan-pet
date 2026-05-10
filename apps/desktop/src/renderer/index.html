@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
+  />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>玄神 - AI桌面宠物</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body ondragstart="return false">
+  <div id="app">
+    <!-- Pet Container -->
+    <div id="pet-container" draggable="false">
+      <div id="pet-sprite" draggable="false"></div>
+    </div>
+
+    <!-- Chat Panel -->
+    <div id="chat-panel" class="panel">
+      <div class="panel-header">
+        <span>💬 聊天</span>
+        <button class="close-btn" data-close="chat-panel">✕</button>
+      </div>
+      <div id="chat-messages"></div>
+      <div class="chat-input-area">
+        <input type="text" id="chat-input" placeholder="和宠物说点什么..." />
+        <button id="chat-send-btn">发送</button>
+      </div>
+    </div>
+
+    <!-- Interact Panel -->
+    <div id="interact-panel" class="panel">
+      <div class="panel-header">
+        <span>🎮 互动</span>
+        <button class="close-btn" data-close="interact-panel">✕</button>
+      </div>
+      <div class="interact-actions">
+        <button class="interact-btn" data-interact="pet">🤚 摸摸头</button>
+        <button class="interact-btn" data-interact="feed">🍖 喂食</button>
+        <button class="interact-btn" data-interact="play">⚽ 玩耍</button>
+        <button class="interact-btn" data-interact="sleep">😴 睡觉</button>
+      </div>
+      <div id="interact-response" class="interact-response"></div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div id="settings-panel" class="panel">
+      <div class="panel-header">
+        <span>⚙️ 设置</span>
+        <button class="close-btn" data-close="settings-panel">✕</button>
+      </div>
+      <div class="settings-content">
+        <div class="setting-group">
+          <label>AI 供应商</label>
+          <select id="provider-select"></select>
+        </div>
+        <div class="setting-group">
+          <label>API Key</label>
+          <input type="password" id="api-key-input" placeholder="输入 API Key" />
+        </div>
+        <div class="setting-group">
+          <label>模型</label>
+          <input type="text" id="model-input" placeholder="模型名称" />
+        </div>
+        <button id="save-settings-btn" class="save-btn">保存设置</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
