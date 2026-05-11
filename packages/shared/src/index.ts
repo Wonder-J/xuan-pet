@@ -9,6 +9,7 @@ export interface AIProviderConfig {
 export interface AppSettings {
   currentProvider: string;
   providers: AIProviderConfig[];
+  systemPrompt: string;
   petSize: number;
   petOpacity: number;
 }
@@ -59,3 +60,33 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
 }
+
+export const PET_EMOTIONS = [
+  'happy',
+  'idle',
+  'move',
+  'drag',
+  'sing',
+  'angry',
+  'sad',
+  'surprise',
+  'scared',
+  'sleep',
+] as const;
+
+export type PetEmotion = (typeof PET_EMOTIONS)[number];
+
+export const PET_EMOTION_LABELS: Record<PetEmotion, string> = {
+  happy: '😊 开心',
+  idle: '😐 空闲',
+  move: '🚶 走路',
+  drag: '✋ 拖拽',
+  sing: '🎤 唱歌',
+  angry: '😠 愤怒',
+  sad: '😢 悲伤',
+  surprise: '🎉 惊喜',
+  scared: '😨 惊吓',
+  sleep: '😴 睡觉',
+};
+
+export type PetAnimations = Record<PetEmotion, string[]>;

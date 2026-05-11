@@ -1,11 +1,17 @@
-import { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, protocol, net } from 'electron';
 import { join } from 'path';
 import { is } from '@electron-toolkit/utils';
 import { setupIPC } from './ipc';
 import { createStore } from './store';
+import { pathToFileURL } from 'url';
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
+
+// Register custom protocol for serving local animation files
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'pet-asset', privileges: { bypassCSP: true, stream: true, supportFetchAPI: true } },
+]);
 
 function createWindow(): void {
   const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize;
@@ -13,6 +19,8 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 200,
     height: 250,
+    minWidth: 200,
+    minHeight: 250,
     x: screenWidth - 250,
     y: screenHeight - 300,
     frame: false,
@@ -87,6 +95,14 @@ function createTray(): void {
 }
 
 app.whenReady().then(() => {
+  // Register protocol to serve local files securely
+  protocol.handle('pet-asset', (request) => {
+    // pet-asset://file/absolute/path/to/file.webp?t=123
+    const url = new URL(request.url);
+    const filePath = decodeURIComponent(url.pathname);
+    return net.fetch(pathToFileURL(filePath).toString());
+  });
+
   const store = createStore();
   createWindow();
   createTray();

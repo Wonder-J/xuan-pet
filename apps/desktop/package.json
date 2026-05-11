@@ -11,9 +11,10 @@
     "dist": "electron-builder"
   },
   "dependencies": {
-    "@xuanshen/shared": "workspace:*",
     "@electron-toolkit/utils": "^3.0.0",
-    "electron-store": "^8.2.0"
+    "@xuanshen/shared": "workspace:*",
+    "electron-store": "^8.2.0",
+    "marked": "^18.0.3"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

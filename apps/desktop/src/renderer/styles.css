@@ -42,15 +42,45 @@ body {
 #pet-sprite {
   width: 120px;
   height: 120px;
-  background-image: url('./assets/pet-idle.svg');
+  background-image: url('./assets/zhayan.webp');
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
-  transition: transform 0.2s ease;
+  transition: transform 0.2s ease, width 0.15s ease, height 0.15s ease;
 }
 
-#pet-sprite:hover {
-  transform: scale(1.05);
+#pet-container:hover .resize-handle {
+  opacity: 1;
+}
+
+.resize-handle {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 12px;
+  height: 12px;
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 20;
+}
+
+.resize-handle::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 0 10px 10px;
+  border-color: transparent transparent rgba(150, 150, 150, 0.6) transparent;
+}
+
+#pet-container:hover {
+  outline: 1px dashed rgba(150, 150, 150, 0.4);
+  outline-offset: -1px;
+  border-radius: 4px;
 }
 
 #pet-sprite.bounce {
@@ -122,11 +152,11 @@ body {
 /* Panels */
 .panel {
   position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   bottom: 130px;
-  left: 50%;
-  transform: translateX(-50%) translateY(0);
-  width: 300px;
-  max-height: 400px;
+  transform: translateY(0);
   background: rgba(255, 255, 255, 0.97);
   border-radius: 16px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
@@ -142,14 +172,14 @@ body {
 .panel.visible {
   opacity: 1;
   visibility: visible;
-  transform: translateX(-50%) translateY(0);
+  transform: translateY(0);
   transition: opacity 0.25s ease, transform 0.25s ease, visibility 0s linear 0s;
 }
 
 .panel.hidden {
   opacity: 0;
   visibility: hidden;
-  transform: translateX(-50%) translateY(15px);
+  transform: translateY(15px);
 }
 
 .panel-header {
@@ -183,8 +213,7 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 12px;
-  min-height: 200px;
-  max-height: 280px;
+  min-height: 0;
 }
 
 .chat-msg {
@@ -220,6 +249,136 @@ body {
 .chat-msg.error .bubble {
   background: #fee;
   color: #c00;
+}
+
+/* Think block (collapsible) */
+.think-block {
+  margin-top: 4px;
+  font-size: 12px;
+  max-width: 80%;
+}
+
+.think-block summary {
+  cursor: pointer;
+  color: #999;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: #f8f8f8;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.think-block summary:hover {
+  background: #f0eaff;
+  color: #7c5cfc;
+}
+
+.think-block .think-content {
+  margin-top: 4px;
+  padding: 8px 10px;
+  background: #fafafa;
+  border-left: 2px solid #ddd;
+  border-radius: 4px;
+  color: #888;
+  font-size: 12px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+/* Thinking animation */
+.bubble.thinking {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 16px;
+}
+
+.bubble.thinking .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #999;
+  animation: thinking-bounce 1.4s infinite ease-in-out both;
+}
+
+.bubble.thinking .dot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.bubble.thinking .dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.bubble.thinking .dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes thinking-bounce {
+
+  0%,
+  80%,
+  100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Markdown in bubbles */
+.markdown-body {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.markdown-body p {
+  margin: 0 0 8px;
+}
+
+.markdown-body p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: 'SF Mono', Menlo, monospace;
+}
+
+.markdown-body pre {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 8px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 6px 0;
+}
+
+.markdown-body pre code {
+  background: none;
+  padding: 0;
+  font-size: 12px;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 18px;
+  margin: 4px 0;
+}
+
+.markdown-body strong {
+  font-weight: 600;
+}
+
+.markdown-body blockquote {
+  border-left: 3px solid #7c5cfc;
+  padding-left: 8px;
+  margin: 6px 0;
+  color: #666;
 }
 
 .chat-input-area {
@@ -313,7 +472,8 @@ body {
 }
 
 .setting-group select,
-.setting-group input {
+.setting-group input,
+.setting-group textarea {
   width: 100%;
   padding: 8px 12px;
   border: 1px solid #ddd;
@@ -321,10 +481,13 @@ body {
   font-size: 13px;
   outline: none;
   transition: border-color 0.2s;
+  font-family: inherit;
+  resize: vertical;
 }
 
 .setting-group select:focus,
-.setting-group input:focus {
+.setting-group input:focus,
+.setting-group textarea:focus {
   border-color: #7c5cfc;
 }
 
@@ -350,6 +513,172 @@ body {
   display: none !important;
 }
 
+/* Animation Settings Panel */
+.animations-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.anim-section {
+  margin-bottom: 16px;
+}
+
+.anim-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.anim-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.anim-add-btn {
+  padding: 4px 12px;
+  border: 1px dashed #7c5cfc;
+  border-radius: 8px;
+  background: transparent;
+  color: #7c5cfc;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.anim-add-btn:hover {
+  background: #f5f0ff;
+}
+
+.anim-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.anim-card {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  border: 1px solid #eee;
+  overflow: hidden;
+  background: #fafafa;
+}
+
+.anim-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.anim-remove-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.anim-card:hover .anim-remove-btn {
+  opacity: 1;
+}
+
+.anim-empty {
+  font-size: 12px;
+  color: #bbb;
+  padding: 8px 0;
+}
+
+.anim-hint {
+  font-size: 11px;
+  color: #aaa;
+  margin-top: 4px;
+}
+
+.anim-divider {
+  border: none;
+  border-top: 1px solid #eee;
+  margin: 12px 0;
+}
+
+/* CSS fallback animations for emotions */
+@keyframes shake-angry {
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  20% {
+    transform: translateX(-4px) rotate(-2deg);
+  }
+
+  40% {
+    transform: translateX(4px) rotate(2deg);
+  }
+
+  60% {
+    transform: translateX(-3px) rotate(-1deg);
+  }
+
+  80% {
+    transform: translateX(3px) rotate(1deg);
+  }
+}
+
+#pet-sprite.anim-angry {
+  animation: shake-angry 0.4s ease infinite;
+}
+
+@keyframes droop-sad {
+
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+
+  50% {
+    transform: translateY(3px) scale(0.97);
+  }
+}
+
+#pet-sprite.anim-sad {
+  animation: droop-sad 2s ease-in-out infinite;
+  filter: grayscale(0.3);
+}
+
+@keyframes sleep-breathe {
+
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+
+  50% {
+    transform: scale(0.96);
+    opacity: 0.6;
+  }
+}
+
+#pet-sprite.anim-sleep {
+  animation: sleep-breathe 3s ease-in-out infinite;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 4px;
@@ -362,4 +691,80 @@ body {
 
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* Category Headers */
+.anim-category-header {
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+  padding: 6px 0 4px;
+  margin-top: 4px;
+}
+
+/* Playlist / Song Items */
+.playlist-content {
+  padding: 16px;
+  overflow-y: auto;
+  max-height: 480px;
+}
+
+.song-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+
+.song-name {
+  flex: 1;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.song-play-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: #4caf50;
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.song-play-btn:hover {
+  background: #43a047;
+}
+
+.song-delete-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.06);
+  color: #999;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.song-delete-btn:hover {
+  background: #ef5350;
+  color: #fff;
+}
+
+.song-remove-btn {
+  width: 28px;
+  height: 28px;
 }

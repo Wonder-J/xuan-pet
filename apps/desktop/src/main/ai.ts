@@ -3,12 +3,12 @@ import { net } from 'electron';
 
 export async function chatWithAI(
   provider: AIProviderConfig,
-  messages: ChatMessage[]
+  messages: ChatMessage[],
+  systemPrompt: string
 ): Promise<string> {
   const systemMessage: ChatMessage = {
     role: 'system',
-    content:
-      '你是一个可爱的桌面宠物助手「玄神」，性格活泼友善。请用简短、可爱的语气回答用户的问题。回答尽量简洁，不超过100字。',
+    content: systemPrompt,
   };
 
   const body = JSON.stringify({

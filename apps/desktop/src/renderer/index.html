@@ -4,17 +4,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: pet-asset:; media-src pet-asset:;" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>玄神 - AI桌面宠物</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 
-<body ondragstart="return false">
+<body>
   <div id="app">
     <!-- Pet Container -->
     <div id="pet-container" draggable="false">
       <div id="pet-sprite" draggable="false"></div>
+      <div id="resize-handle" class="resize-handle"></div>
     </div>
 
     <!-- Chat Panel -->
@@ -53,6 +54,10 @@
       </div>
       <div class="settings-content">
         <div class="setting-group">
+          <label>宠物风格</label>
+          <textarea id="system-prompt-input" rows="3" placeholder="设置宠物的说话风格和性格..."></textarea>
+        </div>
+        <div class="setting-group">
           <label>AI 供应商</label>
           <select id="provider-select"></select>
         </div>
@@ -65,6 +70,39 @@
           <input type="text" id="model-input" placeholder="模型名称" />
         </div>
         <button id="save-settings-btn" class="save-btn">保存设置</button>
+      </div>
+    </div>
+
+    <!-- Animations Panel -->
+    <div id="animations-panel" class="panel">
+      <div class="panel-header">
+        <span>🎭 动作设置</span>
+        <button class="close-btn" data-close="animations-panel">✕</button>
+      </div>
+      <div class="animations-content" id="animations-content">
+        <!-- Dynamically filled -->
+      </div>
+    </div>
+
+    <!-- Playlist Panel -->
+    <div id="playlist-panel" class="panel">
+      <div class="panel-header">
+        <span>🎵 歌单设置</span>
+        <button class="close-btn" data-close="playlist-panel">✕</button>
+      </div>
+      <div class="playlist-content" id="playlist-content">
+        <!-- Dynamically filled -->
+      </div>
+    </div>
+
+    <!-- Song Picker Panel (for choosing a specific song to play) -->
+    <div id="song-picker-panel" class="panel">
+      <div class="panel-header">
+        <span>🎤 选择歌曲</span>
+        <button class="close-btn" data-close="song-picker-panel">✕</button>
+      </div>
+      <div class="playlist-content" id="song-picker-content">
+        <!-- Dynamically filled -->
       </div>
     </div>
   </div>
