@@ -1,11 +1,16 @@
 {
   "name": "xuanshen",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "AI Desktop Pet",
   "scripts": {
     "dev": "pnpm --filter desktop-pet dev",
     "build": "pnpm --filter desktop-pet build",
+    "pack": "pnpm build && pnpm --filter desktop-pet pack",
+    "dist": "pnpm build && pnpm --filter desktop-pet dist",
+    "dist:mac": "pnpm build && pnpm --filter desktop-pet dist:mac",
+    "dist:win": "pnpm build && pnpm --filter desktop-pet dist:win",
+    "dist:all": "pnpm build && pnpm --filter desktop-pet dist:all",
     "lint": "pnpm -r lint"
   },
   "engines": {

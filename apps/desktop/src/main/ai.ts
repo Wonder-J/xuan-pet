@@ -14,7 +14,7 @@ export async function chatWithAI(
   const body = JSON.stringify({
     model: provider.model,
     messages: [systemMessage, ...messages],
-    max_tokens: 300,
+    max_tokens: 1024,
     temperature: 0.8,
   });
 
@@ -33,7 +33,7 @@ export async function chatWithAI(
     // Anthropic uses a different format
     const anthropicBody = JSON.stringify({
       model: provider.model,
-      max_tokens: 300,
+      max_tokens: 1024,
       system: systemMessage.content,
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
     });

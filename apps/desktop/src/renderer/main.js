@@ -43,6 +43,10 @@ const playlistPanel = document.getElementById('playlist-panel');
 const playlistContent = document.getElementById('playlist-content');
 const songPickerPanel = document.getElementById('song-picker-panel');
 const songPickerContent = document.getElementById('song-picker-content');
+const skillsPanel = document.getElementById('skills-panel');
+const skillsContent = document.getElementById('skills-content');
+const scheduledPanel = document.getElementById('scheduled-panel');
+const scheduledContent = document.getElementById('scheduled-content');
 const chatMessages = document.getElementById('chat-messages');
 const chatInput = document.getElementById('chat-input');
 const chatSendBtn = document.getElementById('chat-send-btn');
@@ -54,6 +58,33 @@ const systemPromptInput = document.getElementById('system-prompt-input');
 const interactResponse = document.getElementById('interact-response');
 
 console.log('[renderer] loaded, api =', api);
+
+// ============ Click-through: ignore mouse on transparent areas ============
+document.addEventListener('mouseenter', () => {
+  // When mouse enters the window at all, check if it's over an interactive element
+  // The forward:true on main process means we get these events even when ignoring
+});
+
+// Helper: attach hover listeners to make an element capture mouse events
+function makeInteractive(el) {
+  el.addEventListener('mouseenter', () => {
+    api.setIgnoreMouse(false);
+  });
+  el.addEventListener('mouseleave', () => {
+    // Only re-enable ignore if no panel is open
+    if (!currentPanel) {
+      api.setIgnoreMouse(true);
+    }
+  });
+}
+
+// Pet container always interactive on hover
+makeInteractive(petContainer);
+
+// All panels are interactive when visible
+for (const panel of [chatPanel, interactPanel, settingsPanel, animationsPanel, playlistPanel, songPickerPanel, skillsPanel, scheduledPanel]) {
+  if (panel) makeInteractive(panel);
+}
 
 // ============ Prevent native drag (macOS intercepts it and breaks events) ============
 document.addEventListener('dragstart', (e) => {
@@ -76,6 +107,7 @@ document.addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
   if (e.target.closest('.panel')) return;
   if (e.target.closest('.resize-handle')) return;
+  if (e.target.closest('.speech-bubble')) return;
   mouseDownOnPet = true;
   isDragging = false;
   dragStartX = e.screenX;
@@ -199,6 +231,12 @@ api.onMenuAction((action) => {
   } else if (action === 'stop-singing') {
     stopSinging();
     returnToIdle();
+  } else if (action === 'skills') {
+    openPanel('skills-panel');
+    loadSkillsPanel();
+  } else if (action === 'scheduled') {
+    openPanel('scheduled-panel');
+    loadScheduledPanel();
   } else if (action === 'fullscreen') {
     toggleFullscreen();
   } else if (action === 'roaming') {
@@ -215,6 +253,7 @@ async function toggleFullscreen() {
 async function openPanel(panelId, size) {
   closeAllPanels(true);
   currentPanel = panelId;
+  api.setIgnoreMouse(false); // Panel open → capture all mouse events
   const s = size || PANEL_SIZE;
   await api.resizeWindow(s.width, s.height);
   // Small frame delay to let the window settle before animating in
@@ -226,10 +265,11 @@ async function openPanel(panelId, size) {
 }
 
 function closeAllPanels(skipResize) {
-  [chatPanel, interactPanel, settingsPanel, animationsPanel, playlistPanel, songPickerPanel].forEach((p) => {
+  [chatPanel, interactPanel, settingsPanel, animationsPanel, playlistPanel, songPickerPanel, skillsPanel, scheduledPanel].forEach((p) => {
     p.classList.remove('visible');
   });
   currentPanel = null;
+  api.setIgnoreMouse(true); // No panel → click-through transparent areas
 }
 
 document.querySelectorAll('.close-btn').forEach((btn) => {
@@ -238,7 +278,12 @@ document.querySelectorAll('.close-btn').forEach((btn) => {
     closeAllPanels();
     // Wait for fade-out animation before resizing window
     await new Promise((r) => setTimeout(r, 250));
-    await api.resizeWindow(PET_SIZE.width, PET_SIZE.height);
+    // If bubble is showing, resize to bubble size; otherwise pet size
+    if (document.getElementById('speech-bubble')) {
+      await api.resizeWindow(BUBBLE_WINDOW_SIZE.width, BUBBLE_WINDOW_SIZE.height);
+    } else {
+      await api.resizeWindow(PET_SIZE.width, PET_SIZE.height);
+    }
   });
 });
 
@@ -796,3 +841,288 @@ function stopSinging() {
   if (singAnimInterval) { clearInterval(singAnimInterval); singAnimInterval = null; }
   isSinging = false;
 }
+
+// ============ Skills Panel ============
+let editingSkillId = null;
+
+async function loadSkillsPanel() {
+  const skills = await api.getSkills();
+  renderSkillsList(skills);
+}
+
+function renderSkillsList(skills) {
+  skillsContent.innerHTML = '';
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'skills-toolbar';
+  toolbar.innerHTML = `
+    <button class="anim-add-btn" id="new-skill-btn">+ 新建</button>
+    <button class="anim-add-btn" id="upload-skill-btn">📄 导入MD</button>
+  `;
+  skillsContent.appendChild(toolbar);
+
+  toolbar.querySelector('#new-skill-btn').addEventListener('click', () => {
+    editingSkillId = null;
+    renderSkillEditor('', '');
+  });
+
+  toolbar.querySelector('#upload-skill-btn').addEventListener('click', async () => {
+    const skill = await api.pickSkillFile();
+    if (skill) loadSkillsPanel();
+  });
+
+  if (skills.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'anim-empty';
+    empty.textContent = '还没有技能，点击新建或导入';
+    skillsContent.appendChild(empty);
+    return;
+  }
+
+  for (const skill of skills) {
+    const item = document.createElement('div');
+    item.className = 'skill-item';
+    item.innerHTML = `
+      <span class="skill-name">📝 ${escapeHtml(skill.name)}</span>
+      <button class="skill-edit-btn" title="编辑">✏️</button>
+      <button class="skill-remove-btn" title="删除">🗑</button>
+    `;
+    item.querySelector('.skill-edit-btn').addEventListener('click', () => {
+      editingSkillId = skill.id;
+      renderSkillEditor(skill.name, skill.content);
+    });
+    item.querySelector('.skill-remove-btn').addEventListener('click', async () => {
+      await api.removeSkill(skill.id);
+      loadSkillsPanel();
+    });
+    skillsContent.appendChild(item);
+  }
+}
+
+function renderSkillEditor(name, content) {
+  skillsContent.innerHTML = '';
+
+  const editor = document.createElement('div');
+  editor.className = 'skill-editor';
+  editor.innerHTML = `
+    <button class="skill-back-btn anim-add-btn">← 返回列表</button>
+    <div class="setting-group">
+      <label>技能名称</label>
+      <input type="text" class="skill-name-input" placeholder="例如：讲笑话" />
+    </div>
+    <div class="setting-group">
+      <label>技能内容（Markdown）</label>
+      <textarea class="skill-content-input" rows="15" placeholder="在这里编写技能内容..."></textarea>
+    </div>
+    <button class="save-btn skill-save-btn">保存技能</button>
+  `;
+  skillsContent.appendChild(editor);
+
+  // Set values after DOM insertion to avoid escaping issues
+  editor.querySelector('.skill-name-input').value = name;
+  editor.querySelector('.skill-content-input').value = content;
+
+  editor.querySelector('.skill-back-btn').addEventListener('click', () => {
+    loadSkillsPanel();
+  });
+
+  editor.querySelector('.skill-save-btn').addEventListener('click', async () => {
+    const nameVal = editor.querySelector('.skill-name-input').value.trim();
+    const contentVal = editor.querySelector('.skill-content-input').value.trim();
+    if (!nameVal) return;
+
+    if (editingSkillId) {
+      await api.updateSkill(editingSkillId, nameVal, contentVal);
+    } else {
+      await api.createSkill(nameVal, contentVal);
+    }
+    editingSkillId = null;
+    loadSkillsPanel();
+  });
+}
+
+// ============ Scheduled Tasks Panel ============
+async function loadScheduledPanel() {
+  const tasks = await api.getScheduledTasks();
+  renderScheduledPanel(tasks);
+}
+
+function renderScheduledPanel(tasks) {
+  scheduledContent.innerHTML = '';
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'schedule-toolbar';
+  toolbar.innerHTML = `<button class="anim-add-btn" id="new-schedule-btn">+ 添加定时任务</button>`;
+  scheduledContent.appendChild(toolbar);
+
+  toolbar.querySelector('#new-schedule-btn').addEventListener('click', () => {
+    showScheduleForm();
+  });
+
+  const formArea = document.createElement('div');
+  formArea.id = 'schedule-form-area';
+  scheduledContent.appendChild(formArea);
+
+  if (tasks.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'anim-empty';
+    empty.textContent = '还没有定时任务';
+    scheduledContent.appendChild(empty);
+    return;
+  }
+
+  for (const task of tasks) {
+    const item = document.createElement('div');
+    item.className = 'schedule-item';
+    item.innerHTML = `
+      <div class="schedule-info">
+        <span class="schedule-prompt">"${escapeHtml(task.prompt)}"</span>
+        <span class="schedule-interval">每 ${task.intervalMinutes} 分钟</span>
+      </div>
+      <div class="schedule-actions">
+        <button class="schedule-run-btn" title="立即执行">▶</button>
+        <label class="toggle-switch">
+          <input type="checkbox" ${task.enabled ? 'checked' : ''} />
+          <span class="toggle-slider"></span>
+        </label>
+        <button class="schedule-remove-btn" title="删除">🗑</button>
+      </div>
+    `;
+
+    item.querySelector('.schedule-run-btn').addEventListener('click', async () => {
+      const btn = item.querySelector('.schedule-run-btn');
+      btn.textContent = '⏳';
+      await api.runScheduledTask(task.id);
+      btn.textContent = '▶';
+    });
+
+    item.querySelector('input[type="checkbox"]').addEventListener('change', async (e) => {
+      await api.toggleScheduledTask(task.id, e.target.checked);
+    });
+
+    item.querySelector('.schedule-remove-btn').addEventListener('click', async () => {
+      await api.removeScheduledTask(task.id);
+      loadScheduledPanel();
+    });
+
+    scheduledContent.appendChild(item);
+  }
+}
+
+function showScheduleForm() {
+  const formArea = document.getElementById('schedule-form-area');
+  if (!formArea) return;
+
+  formArea.innerHTML = `
+    <div class="schedule-form">
+      <div class="setting-group">
+        <label>发送内容（Prompt）</label>
+        <input type="text" id="schedule-prompt-input" placeholder="例如：生成炫神笑话" />
+      </div>
+      <div class="setting-group">
+        <label>间隔时间（分钟）</label>
+        <input type="number" id="schedule-interval-input" value="5" min="1" />
+      </div>
+      <div class="schedule-form-btns">
+        <button class="save-btn" id="save-schedule-btn">保存</button>
+        <button class="cancel-btn" id="cancel-schedule-btn">取消</button>
+      </div>
+    </div>
+  `;
+
+  formArea.querySelector('#save-schedule-btn').addEventListener('click', async () => {
+    const prompt = formArea.querySelector('#schedule-prompt-input').value.trim();
+    const interval = parseInt(formArea.querySelector('#schedule-interval-input').value) || 5;
+    if (!prompt) return;
+    await api.createScheduledTask(prompt, interval);
+    loadScheduledPanel();
+  });
+
+  formArea.querySelector('#cancel-schedule-btn').addEventListener('click', () => {
+    formArea.innerHTML = '';
+  });
+}
+
+// ============ Speech Bubble ============
+let bubbleFadeTimeout = null;
+let bubbleRemoveTimeout = null;
+const bubbleQueue = []; // queued contents waiting to be shown
+const BUBBLE_WINDOW_SIZE = { width: 320, height: 420 };
+const BUBBLE_FADE_DELAY_MS = 180000; // 3 minutes before fade starts
+const BUBBLE_FADE_DURATION_MS = 30000; // 30s fade-out animation
+
+function isBubbleVisible() {
+  return !!document.getElementById('speech-bubble');
+}
+
+function showBubble(content) {
+  // If a bubble is already showing, queue this one
+  if (isBubbleVisible()) {
+    bubbleQueue.push(content);
+    return;
+  }
+
+  // Strip think tags — only show the reply
+  const { reply } = parseThinkTags(content);
+
+  const bubble = document.createElement('div');
+  bubble.id = 'speech-bubble';
+  bubble.className = 'speech-bubble';
+  bubble.innerHTML = `
+    <button class="bubble-close-btn" title="关闭">✕</button>
+    <div class="bubble-text markdown-body">${marked.parse(reply)}</div>
+    <button class="bubble-copy-btn" title="复制">📋 复制</button>
+  `;
+
+  const appEl = document.getElementById('app');
+  appEl.insertBefore(bubble, petContainer);
+
+  // Make interactive for click-through
+  makeInteractive(bubble);
+
+  bubble.querySelector('.bubble-close-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    hideBubble();
+  });
+
+  bubble.querySelector('.bubble-copy-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(reply);
+    const btn = bubble.querySelector('.bubble-copy-btn');
+    btn.textContent = '✓ 已复制';
+    setTimeout(() => { if (btn.isConnected) btn.textContent = '📋 复制'; }, 1500);
+  });
+
+  // Expand window if no panel is open
+  if (!currentPanel) {
+    api.resizeWindow(BUBBLE_WINDOW_SIZE.width, BUBBLE_WINDOW_SIZE.height);
+  }
+
+  // Start fade after BUBBLE_FADE_DELAY_MS
+  bubbleFadeTimeout = setTimeout(() => {
+    bubble.classList.add('fading');
+    bubbleRemoveTimeout = setTimeout(() => hideBubble(), BUBBLE_FADE_DURATION_MS);
+  }, BUBBLE_FADE_DELAY_MS);
+}
+
+function hideBubble() {
+  const bubble = document.getElementById('speech-bubble');
+  if (!bubble) return;
+  bubble.remove();
+  if (bubbleFadeTimeout) { clearTimeout(bubbleFadeTimeout); bubbleFadeTimeout = null; }
+  if (bubbleRemoveTimeout) { clearTimeout(bubbleRemoveTimeout); bubbleRemoveTimeout = null; }
+  // Shrink window if no panel is open
+  if (!currentPanel) {
+    api.resizeWindow(PET_SIZE.width, PET_SIZE.height);
+  }
+  // Show next queued bubble after a short delay
+  if (bubbleQueue.length > 0) {
+    const next = bubbleQueue.shift();
+    setTimeout(() => showBubble(next), 500);
+  }
+}
+
+// Listen for scheduled task results
+api.onScheduledResult(({ content }) => {
+  showBubble(content);
+});

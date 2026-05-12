@@ -6,12 +6,27 @@ export interface AIProviderConfig {
   model: string;
 }
 
+export interface Skill {
+  id: string;
+  name: string;
+  content: string;
+}
+
+export interface ScheduledTask {
+  id: string;
+  prompt: string;
+  intervalMinutes: number;
+  enabled: boolean;
+}
+
 export interface AppSettings {
   currentProvider: string;
   providers: AIProviderConfig[];
   systemPrompt: string;
   petSize: number;
   petOpacity: number;
+  skills: Skill[];
+  scheduledTasks: ScheduledTask[];
 }
 
 export const DEFAULT_PROVIDERS: Omit<AIProviderConfig, 'apiKey'>[] = [

@@ -1,6 +1,6 @@
 {
   "name": "desktop-pet",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "main": "dist/main/index.js",
   "scripts": {
@@ -8,7 +8,10 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist:all": "electron-builder --mac --win"
   },
   "dependencies": {
     "@electron-toolkit/utils": "^3.0.0",
@@ -26,16 +29,27 @@
   },
   "build": {
     "appId": "com.xuanshen.desktop-pet",
-    "productName": "玄神",
+    "productName": "Xuan-Pet",
+    "directories": {
+      "output": "release"
+    },
     "mac": {
       "target": "dmg",
-      "category": "public.app-category.entertainment"
+      "category": "public.app-category.entertainment",
+      "icon": "src/renderer/assets/icons/mac/icon.icns"
     },
     "win": {
-      "target": "nsis"
+      "target": "zip",
+      "icon": "src/renderer/assets/icons/win/icon.ico"
+    },
+    "linux": {
+      "target": "AppImage"
     },
     "files": [
       "dist/**/*"
-    ]
+    ],
+    "extraMetadata": {
+      "main": "dist/main/index.js"
+    }
   }
 }

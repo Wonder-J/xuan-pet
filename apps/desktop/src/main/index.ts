@@ -36,7 +36,8 @@ function createWindow(): void {
     },
   });
 
-  mainWindow.setAlwaysOnTop(true, 'floating');
+  mainWindow.setAlwaysOnTop(true, process.platform === 'darwin' ? 'floating' : 'screen-saver');
+  mainWindow.setIgnoreMouseEvents(true, { forward: true });
 
   if (process.platform === 'darwin') {
     mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -92,6 +93,13 @@ function createTray(): void {
 
   tray.setToolTip('玄神 - AI桌面宠物');
   tray.setContextMenu(contextMenu);
+
+  // Windows: left-click tray icon toggles window visibility
+  if (process.platform === 'win32') {
+    tray.on('click', () => {
+      mainWindow?.isVisible() ? mainWindow.hide() : mainWindow?.show();
+    });
+  }
 }
 
 app.whenReady().then(() => {

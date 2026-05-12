@@ -1,8 +1,8 @@
 import { BrowserWindow, ipcMain, Menu, app, dialog, screen } from 'electron';
-import { copyFileSync, mkdirSync, existsSync, unlinkSync, readdirSync } from 'fs';
-import { join, extname } from 'path';
+import { copyFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, readFileSync } from 'fs';
+import { join, extname, basename } from 'path';
 import Store from 'electron-store';
-import { AppSettings, IPC_CHANNELS, ChatMessage, PetEmotion, PetAnimations } from '@xuanshen/shared';
+import { AppSettings, IPC_CHANNELS, ChatMessage, PetEmotion, PetAnimations, Skill, ScheduledTask } from '@xuanshen/shared';
 import { chatWithAI } from './ai';
 
 function getAnimationsDir(): string {
@@ -22,6 +22,25 @@ function toAssetURL(filePath: string): string {
 }
 
 export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
+  // Helper: build system prompt with skills injected
+  function buildSystemPromptWithSkills(): string {
+    const settings = store.store;
+    let prompt = settings.systemPrompt;
+    const skills = settings.skills || [];
+    if (skills.length > 0) {
+      prompt += '\n\n## 你掌握的技能\n\n' + skills.map((s) => `### ${s.name}\n${s.content}`).join('\n\n');
+    }
+    return prompt;
+  }
+  // Mouse event forwarding (click-through transparent areas)
+  ipcMain.on('window:set-ignore-mouse', (_event, ignore: boolean) => {
+    if (ignore) {
+      win.setIgnoreMouseEvents(true, { forward: true });
+    } else {
+      win.setIgnoreMouseEvents(false);
+    }
+  });
+
   // Settings
   ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, () => {
     return store.store;
@@ -44,7 +63,8 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
         return { error: '请先在设置中配置 API Key' };
       }
       try {
-        const reply = await chatWithAI(provider, messages, settings.systemPrompt);
+        const systemPrompt = buildSystemPromptWithSkills();
+        const reply = await chatWithAI(provider, messages, systemPrompt);
         return { content: reply };
       } catch (err: any) {
         return { error: err.message || '请求失败' };
@@ -75,7 +95,7 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
       win.setFullScreen(true);
     } else {
       win.setFullScreen(false);
-      win.setAlwaysOnTop(true, 'floating');
+      win.setAlwaysOnTop(true, process.platform === 'darwin' ? 'floating' : 'screen-saver');
     }
   });
 
@@ -179,7 +199,7 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
     const dir = getSongsDir();
     const added: string[] = [];
     for (const src of result.filePaths) {
-      const filename = `${Date.now()}-${src.split('/').pop()}`;
+      const filename = `${Date.now()}-${basename(src)}`;
       const dest = join(dir, filename);
       copyFileSync(src, dest);
       added.push(toAssetURL(dest));
@@ -208,6 +228,162 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
     }
   });
 
+  // ============ Skills ============
+  ipcMain.handle('skills:get', () => {
+    return store.get('skills', []);
+  });
+
+  ipcMain.handle('skills:create', (_event, name: string, content: string) => {
+    const skills = (store.get('skills', []) as Skill[]).slice();
+    const skill: Skill = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      content,
+    };
+    skills.push(skill);
+    store.set('skills', skills);
+    return skill;
+  });
+
+  ipcMain.handle('skills:update', (_event, id: string, name: string, content: string) => {
+    const skills = (store.get('skills', []) as Skill[]).slice();
+    const idx = skills.findIndex((s) => s.id === id);
+    if (idx >= 0) {
+      skills[idx] = { ...skills[idx], name, content };
+      store.set('skills', skills);
+      return skills[idx];
+    }
+    return null;
+  });
+
+  ipcMain.handle('skills:remove', (_event, id: string) => {
+    const skills = (store.get('skills', []) as Skill[]).slice();
+    store.set('skills', skills.filter((s) => s.id !== id));
+    return true;
+  });
+
+  ipcMain.handle('skills:pick', async () => {
+    const result = await dialog.showOpenDialog(win, {
+      title: '导入技能文档',
+      filters: [{ name: 'Markdown / 文本', extensions: ['md', 'txt'] }],
+      properties: ['openFile'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    const filePath = result.filePaths[0];
+    const content = readFileSync(filePath, 'utf-8');
+    const name = basename(filePath).replace(/\.(md|txt)$/, '') || '未命名技能';
+    const skills = (store.get('skills', []) as Skill[]).slice();
+    const skill: Skill = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      content,
+    };
+    skills.push(skill);
+    store.set('skills', skills);
+    return skill;
+  });
+
+  // ============ Scheduled Tasks ============
+  const taskTimers = new Map<string, ReturnType<typeof setInterval>>();
+
+  async function executeScheduledTask(task: ScheduledTask) {
+    const settings = store.store;
+    const provider = settings.providers.find((p) => p.id === settings.currentProvider);
+    if (!provider || !provider.apiKey) return;
+    const systemPrompt = buildSystemPromptWithSkills();
+    const messages: ChatMessage[] = [{ role: 'user', content: task.prompt }];
+    try {
+      const reply = await chatWithAI(provider, messages, systemPrompt);
+      win.webContents.send('scheduled:result', { content: reply });
+    } catch { /* ignore scheduled task errors */ }
+  }
+
+  function startTaskTimer(task: ScheduledTask) {
+    stopTaskTimer(task.id);
+    if (!task.enabled) return;
+    const timer = setInterval(() => executeScheduledTask(task), task.intervalMinutes * 60 * 1000);
+    taskTimers.set(task.id, timer);
+  }
+
+  function stopTaskTimer(taskId: string) {
+    const timer = taskTimers.get(taskId);
+    if (timer) {
+      clearInterval(timer);
+      taskTimers.delete(taskId);
+    }
+  }
+
+  // Start all enabled tasks on init
+  const initialTasks = (store.get('scheduledTasks', []) as ScheduledTask[]);
+  for (const task of initialTasks) {
+    if (task.enabled) startTaskTimer(task);
+  }
+
+  ipcMain.handle('scheduled:get', () => {
+    return store.get('scheduledTasks', []);
+  });
+
+  ipcMain.handle('scheduled:create', (_event, prompt: string, intervalMinutes: number) => {
+    const tasks = (store.get('scheduledTasks', []) as ScheduledTask[]).slice();
+    const task: ScheduledTask = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      prompt,
+      intervalMinutes,
+      enabled: true,
+    };
+    tasks.push(task);
+    store.set('scheduledTasks', tasks);
+    startTaskTimer(task);
+    return task;
+  });
+
+  ipcMain.handle('scheduled:update', (_event, updatedTask: ScheduledTask) => {
+    const tasks = (store.get('scheduledTasks', []) as ScheduledTask[]).slice();
+    const idx = tasks.findIndex((t) => t.id === updatedTask.id);
+    if (idx >= 0) {
+      tasks[idx] = updatedTask;
+      store.set('scheduledTasks', tasks);
+      if (updatedTask.enabled) {
+        startTaskTimer(updatedTask);
+      } else {
+        stopTaskTimer(updatedTask.id);
+      }
+      return tasks[idx];
+    }
+    return null;
+  });
+
+  ipcMain.handle('scheduled:remove', (_event, id: string) => {
+    const tasks = (store.get('scheduledTasks', []) as ScheduledTask[]).slice();
+    store.set('scheduledTasks', tasks.filter((t) => t.id !== id));
+    stopTaskTimer(id);
+    return true;
+  });
+
+  ipcMain.handle('scheduled:toggle', (_event, id: string, enabled: boolean) => {
+    const tasks = (store.get('scheduledTasks', []) as ScheduledTask[]).slice();
+    const idx = tasks.findIndex((t) => t.id === id);
+    if (idx >= 0) {
+      tasks[idx].enabled = enabled;
+      store.set('scheduledTasks', tasks);
+      if (enabled) {
+        startTaskTimer(tasks[idx]);
+      } else {
+        stopTaskTimer(id);
+      }
+      return tasks[idx];
+    }
+    return null;
+  });
+
+  ipcMain.handle('scheduled:run-now', async (_event, id: string) => {
+    const tasks = (store.get('scheduledTasks', []) as ScheduledTask[]);
+    const task = tasks.find((t) => t.id === id);
+    if (task) {
+      await executeScheduledTask(task);
+    }
+  });
+
   // ============ Roaming ============
   let roamingTimeout: ReturnType<typeof setTimeout> | null = null;
   let roamingMoving = false;
@@ -216,7 +392,7 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
   let roamingMoveInterval: ReturnType<typeof setInterval> | null = null;
   const ROAM_STEP = 2;
   const ROAM_MOVE_INTERVAL = 40;
-  const ACTION_DURATION_MS = 2000;
+  const ACTION_DURATION_MS = 9000;
 
   function roamingTick() {
     if (!roamingEnabled) return;
@@ -226,7 +402,7 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
       roamingMoving = false;
       if (roamingMoveInterval) { clearInterval(roamingMoveInterval); roamingMoveInterval = null; }
       win.webContents.send('roaming:state', { moving: false, direction: roamingDirection });
-      // Next tick: pause 2s for animation then move again
+      // Next tick: pause 9s for animation then move again
       const pause = ACTION_DURATION_MS;
       roamingTimeout = setTimeout(roamingTick, pause);
     } else {
@@ -289,6 +465,10 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
         label: '🎭 动作设置',
         click: () => win.webContents.send('menu:action', 'animations'),
       },
+      {
+        label: '📚 技能',
+        click: () => win.webContents.send('menu:action', 'skills'),
+      },
       { type: 'separator' },
       {
         label: '🎵 歌单设置',
@@ -313,6 +493,10 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
         ],
       },
       { type: 'separator' },
+      {
+        label: '⏰ 定时说话',
+        click: () => win.webContents.send('menu:action', 'scheduled'),
+      },
       {
         label: isRoaming ? '🚶 停止走动' : '🚶 随意走动',
         click: () => win.webContents.send('menu:action', 'roaming'),
