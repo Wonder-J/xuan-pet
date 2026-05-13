@@ -5,6 +5,9 @@ export function createStore(): Store<AppSettings> {
   const defaultQuickChatShortcut = process.platform === 'darwin'
     ? 'Control+Command+X'
     : 'Control+Shift+X';
+  const defaultVideoShortcut = process.platform === 'darwin'
+    ? 'Control+Command+W'
+    : 'Control+Shift+W';
 
   return new Store<AppSettings>({
     name: 'xuanshen-settings',
@@ -29,6 +32,7 @@ export function createStore(): Store<AppSettings> {
         scheduled: '',
         roaming: '',
         fullscreen: '',
+        video: defaultVideoShortcut,
       },
     },
   });

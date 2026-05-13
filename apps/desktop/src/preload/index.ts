@@ -64,4 +64,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('shortcut:triggered', (_event, action) => callback(action)),
   onMenuAction: (callback: (action: string) => void) =>
     ipcRenderer.on('menu:action', (_event, action) => callback(action)),
+
+  // Video
+  onPlayVideo: (callback: (data: { embedUrl: string; title: string }) => void) =>
+    ipcRenderer.on('video:play', (_event, data) => callback(data)),
 });

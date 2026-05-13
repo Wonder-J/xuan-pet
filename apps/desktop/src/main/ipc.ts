@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, Menu, app, dialog, screen, globalShortcut } from 'electron';
+import { BrowserWindow, ipcMain, Menu, app, dialog, screen, globalShortcut, clipboard } from 'electron';
 import { copyFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, readFileSync } from 'fs';
 import { join, extname, basename } from 'path';
 import { is } from '@electron-toolkit/utils';
@@ -34,6 +34,7 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
     scheduled: 'scheduled',
     roaming: 'roaming',
     fullscreen: 'fullscreen',
+    video: 'video',
   };
 
   let quickChatWin: BrowserWindow | null = null;
@@ -106,6 +107,10 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
   function sendMenuAction(action: string) {
     if (action === 'quick-chat') {
       showQuickChat();
+      return;
+    }
+    if (action === 'video') {
+      showVideoInput();
       return;
     }
     win.webContents.send('menu:action', action);
@@ -575,6 +580,123 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
     }
   });
 
+  // ============ Video Playback ============
+  function parseBilibiliUrl(url: string): { bvid?: string; aid?: string; page?: number } | null {
+    try {
+      const bvMatch = url.match(/BV[A-Za-z0-9]+/);
+      const avMatch = url.match(/av(\d+)/i);
+      const pageMatch = url.match(/[?&]p=(\d+)/);
+      const page = pageMatch ? parseInt(pageMatch[1]) : 1;
+      if (bvMatch) return { bvid: bvMatch[0], page };
+      if (avMatch) return { aid: avMatch[1], page };
+    } catch { /* ignore */ }
+    return null;
+  }
+
+  function buildBilibiliEmbedUrl(parsed: { bvid?: string; aid?: string; page?: number }): string {
+    const params = new URLSearchParams({
+      autoplay: '1',
+      high_quality: '1',
+    });
+    if (parsed.bvid) params.set('bvid', parsed.bvid);
+    if (parsed.aid) params.set('aid', parsed.aid);
+    if (parsed.page && parsed.page > 1) params.set('p', String(parsed.page));
+    return `https://player.bilibili.com/player.html?${params.toString()}`;
+  }
+
+  let videoInputWin: BrowserWindow | null = null;
+
+  function createVideoInputWindow() {
+    const display = screen.getPrimaryDisplay().workArea;
+    const width = Math.min(680, Math.max(480, display.width - 200));
+    const height = 110;
+    const x = Math.round(display.x + (display.width - width) / 2);
+    const y = Math.round(display.y + (display.height - height) / 2);
+
+    videoInputWin = new BrowserWindow({
+      width,
+      height,
+      x,
+      y,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hasShadow: false,
+      show: false,
+      webPreferences: {
+        preload: join(__dirname, '../preload/video-input.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    videoInputWin.setAlwaysOnTop(true, process.platform === 'darwin' ? 'floating' : 'screen-saver');
+
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      videoInputWin.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/video-input.html`);
+    } else {
+      videoInputWin.loadFile(join(__dirname, '../renderer/video-input.html'));
+    }
+
+    videoInputWin.once('ready-to-show', () => {
+      videoInputWin?.show();
+      videoInputWin?.focus();
+    });
+
+    videoInputWin.on('closed', () => {
+      videoInputWin = null;
+    });
+
+    videoInputWin.on('blur', () => {
+      if (videoInputWin && !videoInputWin.isDestroyed()) {
+        videoInputWin.close();
+      }
+    });
+  }
+
+  function showVideoInput() {
+    if (videoInputWin && !videoInputWin.isDestroyed()) {
+      videoInputWin.focus();
+      return;
+    }
+    createVideoInputWindow();
+  }
+
+  function closeVideoInput() {
+    if (videoInputWin && !videoInputWin.isDestroyed()) {
+      videoInputWin.close();
+      videoInputWin = null;
+    }
+  }
+
+  ipcMain.handle('video-input:clipboard', () => {
+    try {
+      const clipText = clipboard.readText().trim();
+      if (clipText.includes('bilibili.com') || clipText.match(/BV[A-Za-z0-9]+/) || clipText.match(/av\d+/i)) {
+        return clipText;
+      }
+    } catch { /* ignore */ }
+    return '';
+  });
+
+  ipcMain.handle('video-input:send', (_event, url: string) => {
+    closeVideoInput();
+    const parsed = parseBilibiliUrl(url);
+    if (parsed) {
+      const embedUrl = buildBilibiliEmbedUrl(parsed);
+      win.webContents.send('video:play', { embedUrl, title: parsed.bvid || `av${parsed.aid}` });
+    } else {
+      // Invalid URL → open chat panel and show error bubble
+      win.webContents.send('menu:action', 'chat');
+      win.webContents.send('quick-chat:result', { error: '❌ 无效的B站链接，请粘贴正确的 bilibili.com 视频链接' });
+    }
+  });
+
+  ipcMain.handle('video-input:close', () => {
+    closeVideoInput();
+  });
+
   // Native right-click context menu
   ipcMain.on('window:context-menu', () => {
     const isRoaming = roamingEnabled;
@@ -642,6 +764,12 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
             click: () => win.webContents.send('menu:action', 'stop-singing'),
           },
         ],
+      },
+      { type: 'separator' },
+      {
+        label: '🎬 播放B站视频',
+        accelerator: shortcuts.video || undefined,
+        click: () => sendMenuAction('video'),
       },
       { type: 'separator' },
       {

@@ -74,6 +74,7 @@ const SHORTCUT_FIELDS = [
   { key: 'scheduled', label: '定时说话' },
   { key: 'roaming', label: '随意走动' },
   { key: 'fullscreen', label: '全屏' },
+  { key: 'video', label: '播放B站视频' },
 ];
 
 console.log('[renderer] loaded, api =', api);
@@ -1245,4 +1246,58 @@ function hideBubble() {
 // Listen for scheduled task results
 api.onScheduledResult(({ content }) => {
   showBubble(content);
+});
+
+// ============ Video Bubble ============
+const VIDEO_BUBBLE_SIZE = { width: 420, height: 480 };
+
+function showVideoBubble(embedUrl, title) {
+  // Remove any existing bubble first
+  hideBubble();
+  hideVideoBubble();
+
+  const bubble = document.createElement('div');
+  bubble.id = 'video-bubble';
+  bubble.className = 'speech-bubble video-bubble';
+  bubble.innerHTML = `
+    <button class="bubble-close-btn" title="关闭">✕</button>
+    <div class="video-title">${title || 'B站视频'}</div>
+    <div class="video-container">
+      <iframe
+        src="${embedUrl}"
+        scrolling="no"
+        border="0"
+        frameborder="no"
+        framespacing="0"
+        allowfullscreen="true"
+      ></iframe>
+    </div>
+  `;
+
+  const appEl = document.getElementById('app');
+  appEl.insertBefore(bubble, petContainer);
+
+  makeInteractive(bubble);
+
+  bubble.querySelector('.bubble-close-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    hideVideoBubble();
+  });
+
+  if (!currentPanel) {
+    api.resizeWindow(VIDEO_BUBBLE_SIZE.width, VIDEO_BUBBLE_SIZE.height);
+  }
+}
+
+function hideVideoBubble() {
+  const bubble = document.getElementById('video-bubble');
+  if (!bubble) return;
+  bubble.remove();
+  if (!currentPanel && !isBubbleVisible()) {
+    api.resizeWindow(PET_SIZE.width, PET_SIZE.height);
+  }
+}
+
+api.onPlayVideo(({ embedUrl, title }) => {
+  showVideoBubble(embedUrl, title);
 });

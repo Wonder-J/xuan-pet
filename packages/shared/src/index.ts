@@ -30,6 +30,7 @@ export interface MenuShortcuts {
   scheduled: string;
   roaming: string;
   fullscreen: string;
+  video: string;
 }
 
 export interface AppSettings {

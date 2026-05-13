@@ -21,6 +21,7 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'src/preload/index.ts'),
           'quick-chat': resolve(__dirname, 'src/preload/quick-chat.ts'),
+          'video-input': resolve(__dirname, 'src/preload/video-input.ts'),
         },
       },
     },
@@ -33,6 +34,7 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'src/renderer/index.html'),
           'quick-chat': resolve(__dirname, 'src/renderer/quick-chat.html'),
+          'video-input': resolve(__dirname, 'src/renderer/video-input.html'),
         },
       },
     },
