@@ -123,6 +123,32 @@
       </div>
       <div class="scheduled-content" id="scheduled-content"></div>
     </div>
+
+    <div id="quick-chat-settings-panel" class="panel">
+      <div class="panel-header">
+        <span>⚡ 快速聊天设置</span>
+        <button class="close-btn" data-close="quick-chat-settings-panel">✕</button>
+      </div>
+      <div class="settings-content">
+        <div class="setting-group">
+          <label>输入框占位文案</label>
+          <input type="text" id="quick-chat-placeholder-input" placeholder="你想问龙哥什么" />
+        </div>
+        <button id="save-quick-chat-settings-btn" class="save-btn">保存设置</button>
+      </div>
+    </div>
+
+    <div id="shortcut-settings-panel" class="panel">
+      <div class="panel-header">
+        <span>⌨️ 快捷键配置</span>
+        <button class="close-btn" data-close="shortcut-settings-panel">✕</button>
+      </div>
+      <div class="settings-content">
+        <div class="shortcut-tip">使用 Electron Accelerator 格式，例如 `Control+Shift+X`。</div>
+        <div id="shortcut-settings-content" class="shortcut-settings-content"></div>
+        <button id="save-shortcut-settings-btn" class="save-btn">保存快捷键</button>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="./main.js"></script>

@@ -19,14 +19,29 @@ export interface ScheduledTask {
   enabled: boolean;
 }
 
+export interface MenuShortcuts {
+  quickChat: string;
+  chat: string;
+  interact: string;
+  settings: string;
+  animations: string;
+  skills: string;
+  playlist: string;
+  scheduled: string;
+  roaming: string;
+  fullscreen: string;
+}
+
 export interface AppSettings {
   currentProvider: string;
   providers: AIProviderConfig[];
   systemPrompt: string;
   petSize: number;
   petOpacity: number;
+  quickChatPlaceholder: string;
   skills: Skill[];
   scheduledTasks: ScheduledTask[];
+  shortcuts: MenuShortcuts;
 }
 
 export const DEFAULT_PROVIDERS: Omit<AIProviderConfig, 'apiKey'>[] = [

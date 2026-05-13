@@ -1,8 +1,9 @@
-import { BrowserWindow, ipcMain, Menu, app, dialog, screen } from 'electron';
+import { BrowserWindow, ipcMain, Menu, app, dialog, screen, globalShortcut } from 'electron';
 import { copyFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, readFileSync } from 'fs';
 import { join, extname, basename } from 'path';
+import { is } from '@electron-toolkit/utils';
 import Store from 'electron-store';
-import { AppSettings, IPC_CHANNELS, ChatMessage, PetEmotion, PetAnimations, Skill, ScheduledTask } from '@xuanshen/shared';
+import { AppSettings, IPC_CHANNELS, ChatMessage, PetEmotion, PetAnimations, Skill, ScheduledTask, MenuShortcuts } from '@xuanshen/shared';
 import { chatWithAI } from './ai';
 
 function getAnimationsDir(): string {
@@ -22,6 +23,109 @@ function toAssetURL(filePath: string): string {
 }
 
 export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
+  const shortcutActionMap: Record<keyof MenuShortcuts, string> = {
+    quickChat: 'quick-chat',
+    chat: 'chat',
+    interact: 'interact',
+    settings: 'settings',
+    animations: 'animations',
+    skills: 'skills',
+    playlist: 'playlist',
+    scheduled: 'scheduled',
+    roaming: 'roaming',
+    fullscreen: 'fullscreen',
+  };
+
+  let quickChatWin: BrowserWindow | null = null;
+
+  function createQuickChatWindow() {
+    const display = screen.getPrimaryDisplay().workArea;
+    const width = Math.min(680, Math.max(480, display.width - 200));
+    const height = 110;
+    const x = Math.round(display.x + (display.width - width) / 2);
+    const y = Math.round(display.y + (display.height - height) / 2);
+
+    quickChatWin = new BrowserWindow({
+      width,
+      height,
+      x,
+      y,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hasShadow: false,
+      show: false,
+      webPreferences: {
+        preload: join(__dirname, '../preload/quick-chat.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    quickChatWin.setAlwaysOnTop(true, process.platform === 'darwin' ? 'floating' : 'screen-saver');
+
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      quickChatWin.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/quick-chat.html`);
+    } else {
+      quickChatWin.loadFile(join(__dirname, '../renderer/quick-chat.html'));
+    }
+
+    quickChatWin.once('ready-to-show', () => {
+      quickChatWin?.show();
+      quickChatWin?.focus();
+    });
+
+    quickChatWin.on('closed', () => {
+      quickChatWin = null;
+    });
+
+    quickChatWin.on('blur', () => {
+      // Auto-close when losing focus
+      if (quickChatWin && !quickChatWin.isDestroyed()) {
+        quickChatWin.close();
+      }
+    });
+  }
+
+  function showQuickChat() {
+    if (quickChatWin && !quickChatWin.isDestroyed()) {
+      quickChatWin.focus();
+      return;
+    }
+    createQuickChatWindow();
+  }
+
+  function closeQuickChat() {
+    if (quickChatWin && !quickChatWin.isDestroyed()) {
+      quickChatWin.close();
+      quickChatWin = null;
+    }
+  }
+
+  function sendMenuAction(action: string) {
+    if (action === 'quick-chat') {
+      showQuickChat();
+      return;
+    }
+    win.webContents.send('menu:action', action);
+  }
+
+  function registerGlobalShortcuts(shortcuts: MenuShortcuts) {
+    globalShortcut.unregisterAll();
+    for (const key of Object.keys(shortcutActionMap) as (keyof MenuShortcuts)[]) {
+      const accelerator = shortcuts[key]?.trim();
+      if (!accelerator) continue;
+      try {
+        globalShortcut.register(accelerator, () => {
+          sendMenuAction(shortcutActionMap[key]);
+        });
+      } catch {
+        // Ignore invalid or unavailable accelerators.
+      }
+    }
+  }
+
   // Helper: build system prompt with skills injected
   function buildSystemPromptWithSkills(): string {
     const settings = store.store;
@@ -50,7 +154,33 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
     for (const [key, value] of Object.entries(settings)) {
       store.set(key as keyof AppSettings, value);
     }
+    registerGlobalShortcuts(store.store.shortcuts);
     return store.store;
+  });
+
+  ipcMain.handle('quick-chat:send', async (_event, text: string) => {
+    closeQuickChat();
+    // Tell pet window to show loading bubble
+    win.webContents.send('quick-chat:loading');
+
+    const settings = store.store;
+    const provider = settings.providers.find((p) => p.id === settings.currentProvider);
+    if (!provider || !provider.apiKey) {
+      win.webContents.send('quick-chat:result', { error: '请先在设置中配置 API Key' });
+      return;
+    }
+    const systemPrompt = buildSystemPromptWithSkills();
+    const messages: ChatMessage[] = [{ role: 'user', content: text }];
+    try {
+      const reply = await chatWithAI(provider, messages, systemPrompt);
+      win.webContents.send('quick-chat:result', { content: reply });
+    } catch (err: any) {
+      win.webContents.send('quick-chat:result', { error: err.message || '请求失败' });
+    }
+  });
+
+  ipcMain.handle('quick-chat:close', () => {
+    closeQuickChat();
   });
 
   // Chat
@@ -448,30 +578,51 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
   // Native right-click context menu
   ipcMain.on('window:context-menu', () => {
     const isRoaming = roamingEnabled;
+    const shortcuts = store.store.shortcuts;
     const menu = Menu.buildFromTemplate([
       {
+        label: '⚡ 快速聊天',
+        submenu: [
+          {
+            label: '打开输入框',
+            accelerator: shortcuts.quickChat || undefined,
+            click: () => sendMenuAction('quick-chat'),
+          },
+          {
+            label: '设置占位文案',
+            click: () => sendMenuAction('quick-chat-settings'),
+          },
+        ],
+      },
+      {
         label: '💬 聊天',
+        accelerator: shortcuts.chat || undefined,
         click: () => win.webContents.send('menu:action', 'chat'),
       },
       {
         label: '🎮 互动',
+        accelerator: shortcuts.interact || undefined,
         click: () => win.webContents.send('menu:action', 'interact'),
       },
       {
         label: '⚙️ 设置',
+        accelerator: shortcuts.settings || undefined,
         click: () => win.webContents.send('menu:action', 'settings'),
       },
       {
         label: '🎭 动作设置',
+        accelerator: shortcuts.animations || undefined,
         click: () => win.webContents.send('menu:action', 'animations'),
       },
       {
         label: '📚 技能',
+        accelerator: shortcuts.skills || undefined,
         click: () => win.webContents.send('menu:action', 'skills'),
       },
       { type: 'separator' },
       {
         label: '🎵 歌单设置',
+        accelerator: shortcuts.playlist || undefined,
         click: () => win.webContents.send('menu:action', 'playlist'),
       },
       {
@@ -495,14 +646,21 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
       { type: 'separator' },
       {
         label: '⏰ 定时说话',
+        accelerator: shortcuts.scheduled || undefined,
         click: () => win.webContents.send('menu:action', 'scheduled'),
       },
       {
+        label: '⌨️ 快捷键配置',
+        click: () => sendMenuAction('shortcut-settings'),
+      },
+      {
         label: isRoaming ? '🚶 停止走动' : '🚶 随意走动',
+        accelerator: shortcuts.roaming || undefined,
         click: () => win.webContents.send('menu:action', 'roaming'),
       },
       {
         label: win.isFullScreen() ? '↕️ 退出全屏' : '↕️ 全屏',
+        accelerator: shortcuts.fullscreen || undefined,
         click: () => win.webContents.send('menu:action', 'fullscreen'),
       },
       { type: 'separator' },
@@ -513,4 +671,6 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
     ]);
     menu.popup({ window: win });
   });
+
+  registerGlobalShortcuts(store.store.shortcuts);
 }

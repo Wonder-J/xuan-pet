@@ -56,6 +56,12 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('roaming:state', (_event, state) => callback(state)),
 
   // Events from main process
+  onQuickChatLoading: (callback: () => void) =>
+    ipcRenderer.on('quick-chat:loading', () => callback()),
+  onQuickChatResult: (callback: (result: { content?: string; error?: string }) => void) =>
+    ipcRenderer.on('quick-chat:result', (_event, result) => callback(result)),
+  onShortcutTriggered: (callback: (action: string) => void) =>
+    ipcRenderer.on('shortcut:triggered', (_event, action) => callback(action)),
   onMenuAction: (callback: (action: string) => void) =>
     ipcRenderer.on('menu:action', (_event, action) => callback(action)),
 });

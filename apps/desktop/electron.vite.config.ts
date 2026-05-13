@@ -20,6 +20,7 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/preload/index.ts'),
+          'quick-chat': resolve(__dirname, 'src/preload/quick-chat.ts'),
         },
       },
     },
@@ -31,6 +32,7 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/renderer/index.html'),
+          'quick-chat': resolve(__dirname, 'src/renderer/quick-chat.html'),
         },
       },
     },

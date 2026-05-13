@@ -47,15 +47,34 @@ const skillsPanel = document.getElementById('skills-panel');
 const skillsContent = document.getElementById('skills-content');
 const scheduledPanel = document.getElementById('scheduled-panel');
 const scheduledContent = document.getElementById('scheduled-content');
+const quickChatSettingsPanel = document.getElementById('quick-chat-settings-panel');
+const shortcutSettingsPanel = document.getElementById('shortcut-settings-panel');
 const chatMessages = document.getElementById('chat-messages');
 const chatInput = document.getElementById('chat-input');
 const chatSendBtn = document.getElementById('chat-send-btn');
+const quickChatPlaceholderInput = document.getElementById('quick-chat-placeholder-input');
+const saveQuickChatSettingsBtn = document.getElementById('save-quick-chat-settings-btn');
+const shortcutSettingsContent = document.getElementById('shortcut-settings-content');
+const saveShortcutSettingsBtn = document.getElementById('save-shortcut-settings-btn');
 const providerSelect = document.getElementById('provider-select');
 const apiKeyInput = document.getElementById('api-key-input');
 const modelInput = document.getElementById('model-input');
 const saveSettingsBtn = document.getElementById('save-settings-btn');
 const systemPromptInput = document.getElementById('system-prompt-input');
 const interactResponse = document.getElementById('interact-response');
+const DEFAULT_QUICK_CHAT_PLACEHOLDER = '你想问龙哥什么';
+const SHORTCUT_FIELDS = [
+  { key: 'quickChat', label: '快速聊天' },
+  { key: 'chat', label: '聊天' },
+  { key: 'interact', label: '互动' },
+  { key: 'settings', label: '设置' },
+  { key: 'animations', label: '动作设置' },
+  { key: 'skills', label: '技能' },
+  { key: 'playlist', label: '歌单设置' },
+  { key: 'scheduled', label: '定时说话' },
+  { key: 'roaming', label: '随意走动' },
+  { key: 'fullscreen', label: '全屏' },
+];
 
 console.log('[renderer] loaded, api =', api);
 
@@ -82,7 +101,7 @@ function makeInteractive(el) {
 makeInteractive(petContainer);
 
 // All panels are interactive when visible
-for (const panel of [chatPanel, interactPanel, settingsPanel, animationsPanel, playlistPanel, songPickerPanel, skillsPanel, scheduledPanel]) {
+for (const panel of [chatPanel, interactPanel, settingsPanel, animationsPanel, playlistPanel, songPickerPanel, skillsPanel, scheduledPanel, quickChatSettingsPanel, shortcutSettingsPanel]) {
   if (panel) makeInteractive(panel);
 }
 
@@ -237,10 +256,30 @@ api.onMenuAction((action) => {
   } else if (action === 'scheduled') {
     openPanel('scheduled-panel');
     loadScheduledPanel();
+  } else if (action === 'quick-chat-settings') {
+    openPanel('quick-chat-settings-panel');
+    loadQuickChatSettings();
+  } else if (action === 'shortcut-settings') {
+    openPanel('shortcut-settings-panel');
+    loadShortcutSettings();
   } else if (action === 'fullscreen') {
     toggleFullscreen();
   } else if (action === 'roaming') {
     toggleRoaming();
+  }
+});
+
+// Listen for quick-chat loading/result from main process
+api.onQuickChatLoading(() => {
+  showLoadingBubble();
+});
+
+api.onQuickChatResult((result) => {
+  hideLoadingBubble();
+  if (result.error) {
+    showBubble(result.error);
+  } else if (result.content) {
+    showBubble(result.content);
   }
 });
 
@@ -265,7 +304,7 @@ async function openPanel(panelId, size) {
 }
 
 function closeAllPanels(skipResize) {
-  [chatPanel, interactPanel, settingsPanel, animationsPanel, playlistPanel, songPickerPanel, skillsPanel, scheduledPanel].forEach((p) => {
+  [chatPanel, interactPanel, settingsPanel, animationsPanel, playlistPanel, songPickerPanel, skillsPanel, scheduledPanel, quickChatSettingsPanel, shortcutSettingsPanel].forEach((p) => {
     p.classList.remove('visible');
   });
   currentPanel = null;
@@ -423,6 +462,55 @@ async function loadSettings() {
 
   providerSelect.onchange = () => updateProviderFields(settings);
 }
+
+async function loadQuickChatSettings() {
+  const settings = await api.getSettings();
+  quickChatPlaceholderInput.value = settings.quickChatPlaceholder || DEFAULT_QUICK_CHAT_PLACEHOLDER;
+}
+
+saveQuickChatSettingsBtn.addEventListener('click', async () => {
+  await api.setSettings({
+    quickChatPlaceholder: quickChatPlaceholderInput.value.trim() || DEFAULT_QUICK_CHAT_PLACEHOLDER,
+  });
+
+  saveQuickChatSettingsBtn.textContent = '✓ 已保存';
+  setTimeout(() => {
+    saveQuickChatSettingsBtn.textContent = '保存设置';
+  }, 1500);
+});
+
+async function loadShortcutSettings() {
+  const settings = await api.getSettings();
+  const shortcuts = settings.shortcuts || {};
+  shortcutSettingsContent.innerHTML = '';
+
+  for (const field of SHORTCUT_FIELDS) {
+    const row = document.createElement('div');
+    row.className = 'shortcut-item';
+    row.innerHTML = `
+      <label class="shortcut-label">${field.label}</label>
+      <input type="text" class="shortcut-input" data-shortcut-key="${field.key}" placeholder="留空表示不设置" />
+    `;
+    row.querySelector('.shortcut-input').value = shortcuts[field.key] || '';
+    shortcutSettingsContent.appendChild(row);
+  }
+}
+
+saveShortcutSettingsBtn.addEventListener('click', async () => {
+  const settings = await api.getSettings();
+  const nextShortcuts = { ...(settings.shortcuts || {}) };
+
+  shortcutSettingsContent.querySelectorAll('[data-shortcut-key]').forEach((input) => {
+    nextShortcuts[input.dataset.shortcutKey] = input.value.trim();
+  });
+
+  await api.setSettings({ shortcuts: nextShortcuts });
+
+  saveShortcutSettingsBtn.textContent = '✓ 已保存';
+  setTimeout(() => {
+    saveShortcutSettingsBtn.textContent = '保存快捷键';
+  }, 1500);
+});
 
 function updateProviderFields(settings) {
   const provider = settings.providers.find((p) => p.id === providerSelect.value);
@@ -1055,9 +1143,41 @@ function isBubbleVisible() {
   return !!document.getElementById('speech-bubble');
 }
 
+function showLoadingBubble() {
+  hideBubble(); // clear any existing bubble first
+
+  const bubble = document.createElement('div');
+  bubble.id = 'speech-bubble';
+  bubble.className = 'speech-bubble loading-bubble';
+  bubble.innerHTML = `
+    <div class="bubble-text bubble-loading">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>
+  `;
+
+  const appEl = document.getElementById('app');
+  appEl.insertBefore(bubble, petContainer);
+  makeInteractive(bubble);
+
+  if (!currentPanel) {
+    api.resizeWindow(BUBBLE_WINDOW_SIZE.width, BUBBLE_WINDOW_SIZE.height);
+  }
+}
+
+function hideLoadingBubble() {
+  const bubble = document.getElementById('speech-bubble');
+  if (bubble && bubble.classList.contains('loading-bubble')) {
+    bubble.remove();
+  }
+}
+
 function showBubble(content) {
-  // If a bubble is already showing, queue this one
-  if (isBubbleVisible()) {
+  // If a loading bubble is showing, remove it first (don't queue)
+  const existingBubble = document.getElementById('speech-bubble');
+  if (existingBubble && existingBubble.classList.contains('loading-bubble')) {
+    existingBubble.remove();
+  } else if (isBubbleVisible()) {
+    // If a content bubble is showing, queue this one
     bubbleQueue.push(content);
     return;
   }
