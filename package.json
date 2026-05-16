@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "AI Desktop Pet",
   "scripts": {
+    "start": "bash start.sh",
     "dev": "pnpm --filter desktop-pet dev",
     "build": "pnpm --filter desktop-pet build",
     "pack": "pnpm build && pnpm --filter desktop-pet pack",

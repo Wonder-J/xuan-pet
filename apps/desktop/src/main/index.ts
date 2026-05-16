@@ -4,6 +4,7 @@ import { is } from '@electron-toolkit/utils';
 import { setupIPC } from './ipc';
 import { createStore } from './store';
 import { pathToFileURL } from 'url';
+import { stopVoiceService } from './voice';
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -118,9 +119,14 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  stopVoiceService();
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('before-quit', () => {
+  stopVoiceService();
 });
 
 app.on('activate', () => {

@@ -263,6 +263,9 @@ api.onMenuAction((action) => {
   } else if (action === 'shortcut-settings') {
     openPanel('shortcut-settings-panel');
     loadShortcutSettings();
+  } else if (action === 'voice-settings') {
+    openPanel('voice-settings-panel');
+    loadVoiceSettings();
   } else if (action === 'fullscreen') {
     toggleFullscreen();
   } else if (action === 'roaming') {
@@ -275,12 +278,24 @@ api.onQuickChatLoading(() => {
   showLoadingBubble();
 });
 
-api.onQuickChatResult((result) => {
-  hideLoadingBubble();
+api.onQuickChatResult(async (result) => {
   if (result.error) {
+    hideLoadingBubble();
     showBubble(result.error);
   } else if (result.content) {
-    showBubble(result.content);
+    if (voiceEnabled) {
+      // Voice enabled: keep loading dots until both text and audio are ready
+      const audio = await prepareVoiceAudio(result.content);
+      hideLoadingBubble();
+      showBubble(result.content);
+      if (audio) audio.play().catch(() => { });
+    } else {
+      // Voice disabled: show text immediately
+      hideLoadingBubble();
+      showBubble(result.content);
+    }
+  } else {
+    hideLoadingBubble();
   }
 });
 
@@ -305,8 +320,8 @@ async function openPanel(panelId, size) {
 }
 
 function closeAllPanels(skipResize) {
-  [chatPanel, interactPanel, settingsPanel, animationsPanel, playlistPanel, songPickerPanel, skillsPanel, scheduledPanel, quickChatSettingsPanel, shortcutSettingsPanel].forEach((p) => {
-    p.classList.remove('visible');
+  [chatPanel, interactPanel, settingsPanel, animationsPanel, playlistPanel, songPickerPanel, skillsPanel, scheduledPanel, quickChatSettingsPanel, shortcutSettingsPanel, voiceSettingsPanel].forEach((p) => {
+    if (p) p.classList.remove('visible');
   });
   currentPanel = null;
   api.setIgnoreMouse(true); // No panel → click-through transparent areas
@@ -625,8 +640,8 @@ async function toggleRoaming() {
 
 // Listen for roaming state changes from main process
 api.onRoamingState(({ moving, direction }) => {
-  if (!isRoaming && direction === 0) {
-    // Roaming stopped
+  if (!isRoaming) {
+    // Roaming stopped — ignore any stale state messages
     petSprite.style.transform = '';
     returnToIdle();
     return;
@@ -1301,3 +1316,229 @@ function hideVideoBubble() {
 api.onPlayVideo(({ embedUrl, title }) => {
   showVideoBubble(embedUrl, title);
 });
+
+// ============ Voice Settings ============
+const voiceSettingsPanel = document.getElementById('voice-settings-panel');
+if (voiceSettingsPanel) makeInteractive(voiceSettingsPanel);
+let voiceEnabled = false;
+
+// Load voice enabled state on init
+(async () => {
+  try {
+    const vs = await api.voiceGetSettings();
+    voiceEnabled = vs.enabled;
+  } catch { /* ignore */ }
+})();
+
+api.onVoiceEnabledChanged((enabled) => {
+  voiceEnabled = enabled;
+});
+
+async function prepareVoiceAudio(text) {
+  if (!voiceEnabled) return null;
+  try {
+    // Strip think tags first (same logic as bubble display)
+    const { reply } = parseThinkTags(text);
+    // Strip markdown/html for cleaner speech
+    const plainText = reply.replace(/<[^>]+>/g, '').replace(/[#*_`~\[\]()]/g, '').trim();
+    if (!plainText) return null;
+    const result = await api.voiceSpeak(plainText);
+    if (result.audioPath) {
+      const audio = new Audio(`pet-asset://file${result.audioPath}`);
+      // Wait for audio to be loadable
+      await new Promise((resolve) => {
+        audio.addEventListener('canplaythrough', resolve, { once: true });
+        audio.addEventListener('error', resolve, { once: true });
+        audio.load();
+      });
+      return audio;
+    }
+  } catch { /* voice not available, silent fallback */ }
+  return null;
+}
+
+async function loadVoiceSettings() {
+  const content = document.getElementById('voice-settings-content');
+  if (!content) return;
+  content.innerHTML = '<p style="color:#aaa;">加载中...</p>';
+
+  try {
+    const settings = await api.voiceGetSettings();
+    const modelsResult = await api.voiceGetModels();
+    const voicesResult = await api.voiceGetVoices();
+
+    const models = modelsResult?.models || [];
+    const voices = voicesResult?.voices || [];
+
+    let html = `
+      <div class="voice-section">
+        <h4>语音回复</h4>
+        <label class="voice-toggle-label">
+          <input type="checkbox" id="voice-enabled-checkbox" ${settings.enabled ? 'checked' : ''} />
+          <span>开启语音回复功能</span>
+        </label>
+      </div>
+      <div class="voice-section">
+        <h4>语音引擎</h4>
+        <div class="voice-models-list">
+    `;
+
+    for (const model of models) {
+      const isSelected = settings.modelId === model.id;
+      html += `
+        <div class="voice-model-item ${isSelected ? 'selected' : ''}">
+          <div class="voice-model-info">
+            <span class="voice-model-name">${model.name}</span>
+            <span class="voice-model-desc">${model.description || ''}</span>
+          </div>
+          <span class="voice-model-size">${model.size_hint}</span>
+          <div class="voice-model-actions">
+            ${model.downloaded
+          ? `<button class="voice-select-btn ${isSelected ? 'active' : ''}" data-model-id="${model.id}">${isSelected ? '✓ 使用中' : '选择'}</button>`
+          : `<button class="voice-download-btn" data-model-id="${model.id}">下载</button>`
+        }
+          </div>
+        </div>
+      `;
+    }
+
+    html += `
+        </div>
+        <p class="voice-model-path-hint">📂 本地模型下载位置: ~/.cache/huggingface/hub</p>
+      </div>
+      <div class="voice-section">
+        <h4>声线选择</h4>
+        <select id="voice-select" class="voice-select">
+          <option value="">默认声线</option>
+    `;
+
+    // Filter voices based on selected engine
+    const edgeVoices = voices.filter(v => v.type === 'edge_tts');
+    const qwenVoices = voices.filter(v => v.type === 'qwen_tts');
+    const customVoices = voices.filter(v => v.type === 'custom');
+    const isQwenEngine = settings.modelId?.startsWith('qwen_tts');
+
+    if (settings.modelId === 'edge_tts') {
+      html += '<optgroup label="Edge TTS 预设声线">';
+      for (const voice of edgeVoices) {
+        html += `<option value="${voice.id}" ${settings.selectedVoiceId === voice.id ? 'selected' : ''}>${voice.name}</option>`;
+      }
+      html += '</optgroup>';
+    } else if (isQwenEngine) {
+      html += '<optgroup label="Qwen3-TTS 预设声线">';
+      for (const voice of qwenVoices) {
+        html += `<option value="${voice.id}" ${settings.selectedVoiceId === voice.id ? 'selected' : ''}>${voice.name}</option>`;
+      }
+      html += '</optgroup>';
+      if (customVoices.length > 0) {
+        html += '<optgroup label="自定义声线 (克隆)">';
+        for (const voice of customVoices) {
+          html += `<option value="${voice.id}" ${settings.selectedVoiceId === voice.id ? 'selected' : ''}>${voice.name}</option>`;
+        }
+        html += '</optgroup>';
+      }
+    }
+
+    html += `
+        </select>
+    `;
+
+    // Show upload button for Qwen-TTS engines (voice clone)
+    if (isQwenEngine) {
+      html += `<button id="voice-upload-btn" class="voice-upload-btn">📁 上传语音样本 (用于声线克隆)</button>`;
+    }
+
+    html += `
+      </div>
+      <div class="voice-section" id="voice-list-section">
+        <h4>自定义声线</h4>
+        <div class="voice-list">
+    `;
+
+    if (customVoices.length === 0) {
+      html += '<p style="color:#888;">暂无自定义声线，上传 3 秒以上语音样本即可克隆声线</p>';
+    } else {
+      for (const voice of customVoices) {
+        html += `
+          <div class="voice-item">
+            <span>${voice.name}</span>
+            <button class="voice-delete-btn" data-voice-id="${voice.id}">删除</button>
+          </div>
+        `;
+      }
+    }
+
+    html += '</div></div>';
+    content.innerHTML = html;
+
+    // Bind events
+    document.getElementById('voice-enabled-checkbox')?.addEventListener('change', async (e) => {
+      const enabled = e.target.checked;
+      await api.voiceSetSettings({ enabled });
+      voiceEnabled = enabled;
+    });
+
+    document.getElementById('voice-select')?.addEventListener('change', async (e) => {
+      await api.voiceSetSettings({ selectedVoiceId: e.target.value });
+    });
+
+    document.getElementById('voice-upload-btn')?.addEventListener('click', async () => {
+      const result = await api.voiceUploadSample();
+      if (result && !result.error) {
+        loadVoiceSettings();
+      } else if (result?.error) {
+        alert('上传失败: ' + result.error);
+      }
+    });
+
+    content.querySelectorAll('.voice-select-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const modelId = btn.dataset.modelId;
+        await api.voiceSelectModel(modelId);
+        await api.voiceSetSettings({ modelId });
+        loadVoiceSettings();
+      });
+    });
+
+    content.querySelectorAll('.voice-download-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const modelId = btn.dataset.modelId;
+        btn.disabled = true;
+        btn.textContent = '下载中...';
+        // Show progress hint near the button
+        const item = btn.closest('.voice-model-item');
+        let progressEl = item.querySelector('.voice-download-progress');
+        if (!progressEl) {
+          progressEl = document.createElement('div');
+          progressEl.className = 'voice-download-progress';
+          item.appendChild(progressEl);
+        }
+        progressEl.textContent = '正在下载模型，可能需要几分钟...';
+
+        const result = await api.voiceDownloadModel(modelId);
+        if (result?.error) {
+          btn.textContent = '下载失败';
+          progressEl.textContent = '❌ ' + result.error;
+          progressEl.style.color = '#e44';
+          setTimeout(() => { btn.textContent = '重试'; btn.disabled = false; }, 3000);
+        } else {
+          progressEl.textContent = '✓ 下载完成！';
+          progressEl.style.color = '#4caf50';
+          setTimeout(() => loadVoiceSettings(), 1000);
+        }
+      });
+    });
+
+    content.querySelectorAll('.voice-delete-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (confirm('确认删除该声线？')) {
+          await api.voiceDeleteVoice(btn.dataset.voiceId);
+          loadVoiceSettings();
+        }
+      });
+    });
+  } catch (err) {
+    content.innerHTML = `<p style="color:#f66;">加载失败: ${err.message || '语音服务未启动'}</p>
+      <p style="color:#aaa;font-size:12px;">请确保已运行 start.sh 或手动启动语音服务</p>`;
+  }
+}

@@ -1,10 +1,11 @@
 import { BrowserWindow, ipcMain, Menu, app, dialog, screen, globalShortcut, clipboard } from 'electron';
-import { copyFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, readFileSync } from 'fs';
+import { copyFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { join, extname, basename } from 'path';
 import { is } from '@electron-toolkit/utils';
 import Store from 'electron-store';
-import { AppSettings, IPC_CHANNELS, ChatMessage, PetEmotion, PetAnimations, Skill, ScheduledTask, MenuShortcuts } from '@xuanshen/shared';
+import { AppSettings, IPC_CHANNELS, ChatMessage, PetEmotion, PetAnimations, Skill, ScheduledTask, MenuShortcuts, VoiceSettings } from '@xuanshen/shared';
 import { chatWithAI } from './ai';
+import { startVoiceService, stopVoiceService, voiceGetModels, voiceDownloadModel, voiceSelectModel, voiceGetVoices, voiceUploadSample, voiceDeleteVoice, voiceSpeak, isVoiceServiceRunning } from './voice';
 
 function getAnimationsDir(): string {
   const dir = join(app.getPath('userData'), 'pet-animations');
@@ -697,6 +698,108 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
     closeVideoInput();
   });
 
+  // ============ Voice TTS ============
+  ipcMain.handle('voice:get-models', async () => {
+    try {
+      if (!isVoiceServiceRunning()) {
+        await startVoiceService();
+      }
+      return await voiceGetModels();
+    } catch (err: any) {
+      return { error: err.message };
+    }
+  });
+
+  ipcMain.handle('voice:download-model', async (_event, modelId: string) => {
+    try {
+      if (!isVoiceServiceRunning()) {
+        await startVoiceService();
+      }
+      return await voiceDownloadModel(modelId);
+    } catch (err: any) {
+      return { error: err.message };
+    }
+  });
+
+  ipcMain.handle('voice:select-model', async (_event, modelId: string) => {
+    try {
+      if (!isVoiceServiceRunning()) {
+        await startVoiceService();
+      }
+      return await voiceSelectModel(modelId);
+    } catch (err: any) {
+      return { error: err.message };
+    }
+  });
+
+  ipcMain.handle('voice:get-voices', async () => {
+    try {
+      if (!isVoiceServiceRunning()) {
+        await startVoiceService();
+      }
+      return await voiceGetVoices();
+    } catch (err: any) {
+      return { error: err.message };
+    }
+  });
+
+  ipcMain.handle('voice:upload-sample', async () => {
+    const result = await dialog.showOpenDialog(win, {
+      title: '上传语音样本',
+      filters: [{ name: '音频文件', extensions: ['wav', 'mp3', 'flac', 'ogg', 'm4a'] }],
+      properties: ['openFile'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    try {
+      if (!isVoiceServiceRunning()) {
+        await startVoiceService();
+      }
+      return await voiceUploadSample(result.filePaths[0]);
+    } catch (err: any) {
+      return { error: err.message };
+    }
+  });
+
+  ipcMain.handle('voice:delete-voice', async (_event, voiceId: string) => {
+    try {
+      if (!isVoiceServiceRunning()) {
+        await startVoiceService();
+      }
+      return await voiceDeleteVoice(voiceId);
+    } catch (err: any) {
+      return { error: err.message };
+    }
+  });
+
+  ipcMain.handle('voice:speak', async (_event, text: string) => {
+    const voiceSettings = store.get('voice') as VoiceSettings;
+    if (!voiceSettings?.enabled) return { error: '语音未启用' };
+    try {
+      if (!isVoiceServiceRunning()) {
+        const started = await startVoiceService();
+        if (!started) return { error: '语音服务启动失败' };
+      }
+      const audioBuffer = await voiceSpeak(text, voiceSettings.selectedVoiceId || undefined, 'Auto', voiceSettings.modelId || 'edge_tts');
+      // Write to temp file and return path for renderer to play
+      const tmpPath = join(app.getPath('temp'), `xuanshen_speech_${Date.now()}.wav`);
+      writeFileSync(tmpPath, audioBuffer);
+      return { audioPath: tmpPath };
+    } catch (err: any) {
+      return { error: err.message };
+    }
+  });
+
+  ipcMain.handle('voice:get-settings', () => {
+    return store.get('voice', { enabled: false, modelId: 'edge_tts', selectedVoiceId: '' });
+  });
+
+  ipcMain.handle('voice:set-settings', (_event, settings: Partial<VoiceSettings>) => {
+    const current = store.get('voice', { enabled: false, modelId: 'edge_tts', selectedVoiceId: '' }) as VoiceSettings;
+    const updated = { ...current, ...settings };
+    store.set('voice', updated);
+    return updated;
+  });
+
   // Native right-click context menu
   ipcMain.on('window:context-menu', () => {
     const isRoaming = roamingEnabled;
@@ -780,6 +883,26 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
       {
         label: '⌨️ 快捷键配置',
         click: () => sendMenuAction('shortcut-settings'),
+      },
+      {
+        label: '🔊 声音配置',
+        submenu: [
+          {
+            label: '声线设置',
+            click: () => win.webContents.send('menu:action', 'voice-settings'),
+          },
+          {
+            label: '开启语音回复',
+            type: 'checkbox',
+            checked: (store.get('voice') as VoiceSettings)?.enabled ?? false,
+            click: (menuItem) => {
+              const current = store.get('voice', { enabled: false, modelId: 'edge_tts', selectedVoiceId: '' }) as VoiceSettings;
+              current.enabled = menuItem.checked;
+              store.set('voice', current);
+              win.webContents.send('voice:enabled-changed', current.enabled);
+            },
+          },
+        ],
       },
       {
         label: isRoaming ? '🚶 停止走动' : '🚶 随意走动',

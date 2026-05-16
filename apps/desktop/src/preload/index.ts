@@ -68,4 +68,17 @@ contextBridge.exposeInMainWorld('api', {
   // Video
   onPlayVideo: (callback: (data: { embedUrl: string; title: string }) => void) =>
     ipcRenderer.on('video:play', (_event, data) => callback(data)),
+
+  // Voice
+  voiceGetModels: () => ipcRenderer.invoke('voice:get-models'),
+  voiceDownloadModel: (modelId: string) => ipcRenderer.invoke('voice:download-model', modelId),
+  voiceSelectModel: (modelId: string) => ipcRenderer.invoke('voice:select-model', modelId),
+  voiceGetVoices: () => ipcRenderer.invoke('voice:get-voices'),
+  voiceUploadSample: () => ipcRenderer.invoke('voice:upload-sample'),
+  voiceDeleteVoice: (voiceId: string) => ipcRenderer.invoke('voice:delete-voice', voiceId),
+  voiceSpeak: (text: string) => ipcRenderer.invoke('voice:speak', text),
+  voiceGetSettings: () => ipcRenderer.invoke('voice:get-settings'),
+  voiceSetSettings: (settings: any) => ipcRenderer.invoke('voice:set-settings', settings),
+  onVoiceEnabledChanged: (callback: (enabled: boolean) => void) =>
+    ipcRenderer.on('voice:enabled-changed', (_event, enabled) => callback(enabled)),
 });

@@ -34,6 +34,11 @@ export function createStore(): Store<AppSettings> {
         fullscreen: '',
         video: defaultVideoShortcut,
       },
+      voice: {
+        enabled: false,
+        modelId: 'edge_tts',
+        selectedVoiceId: '',
+      },
     },
   });
 }

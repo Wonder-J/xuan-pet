@@ -1225,3 +1225,173 @@ body {
 .shortcut-input:focus {
   border-color: #7c5cfc;
 }
+
+/* Voice Settings */
+.voice-section {
+  margin-bottom: 16px;
+}
+
+.voice-section h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4a426b;
+  margin-bottom: 8px;
+}
+
+.voice-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #333;
+  cursor: pointer;
+}
+
+.voice-toggle-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+
+.voice-models-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.voice-model-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f8f7ff;
+  border-radius: 8px;
+}
+
+.voice-model-item.selected {
+  background: #ede8ff;
+  border: 1px solid #c4b5fd;
+}
+
+.voice-model-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.voice-model-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.voice-model-desc {
+  font-size: 11px;
+  color: #888;
+}
+
+.voice-model-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.voice-select-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  background: #f0edff;
+  color: #7c5cfc;
+  border: 1px solid #d4ccff;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.voice-select-btn.active {
+  background: #7c5cfc;
+  color: white;
+  border-color: #7c5cfc;
+}
+
+.voice-model-size {
+  font-size: 11px;
+  color: #888;
+}
+
+.voice-model-status.downloaded {
+  font-size: 12px;
+  color: #4caf50;
+  font-weight: 600;
+}
+
+.voice-download-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  background: #7c5cfc;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.voice-download-btn:disabled {
+  background: #aaa;
+  cursor: wait;
+}
+
+.voice-select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.voice-upload-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  background: #f0edff;
+  color: #7c5cfc;
+  border: 1px solid #d4ccff;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.voice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.voice-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: #fafafa;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.voice-delete-btn {
+  padding: 2px 8px;
+  font-size: 11px;
+  background: none;
+  color: #e44;
+  border: 1px solid #e44;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.voice-download-progress {
+  width: 100%;
+  font-size: 11px;
+  color: #7c5cfc;
+  margin-top: 4px;
+  padding: 4px 0;
+}
+
+.voice-model-path-hint {
+  font-size: 11px;
+  color: #999;
+  margin-top: 8px;
+}

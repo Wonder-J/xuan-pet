@@ -33,6 +33,17 @@ export interface MenuShortcuts {
   video: string;
 }
 
+export interface VoiceProfile {
+  id: string;
+  name: string;
+}
+
+export interface VoiceSettings {
+  enabled: boolean;
+  modelId: string;
+  selectedVoiceId: string;
+}
+
 export interface AppSettings {
   currentProvider: string;
   providers: AIProviderConfig[];
@@ -43,6 +54,7 @@ export interface AppSettings {
   skills: Skill[];
   scheduledTasks: ScheduledTask[];
   shortcuts: MenuShortcuts;
+  voice: VoiceSettings;
 }
 
 export const DEFAULT_PROVIDERS: Omit<AIProviderConfig, 'apiKey'>[] = [
