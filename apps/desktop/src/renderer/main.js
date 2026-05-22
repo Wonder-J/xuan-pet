@@ -1265,7 +1265,7 @@ api.onScheduledResult(async ({ content }) => {
     const audio = await prepareVoiceAudio(content);
     hideLoadingBubble();
     showBubble(content);
-    if (audio) audio.play().catch(() => {});
+    if (audio) audio.play().catch(() => { });
   } else {
     showBubble(content);
   }

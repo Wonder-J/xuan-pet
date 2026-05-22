@@ -51,7 +51,13 @@ echo [√] 虚拟环境已激活
 :: ============ 安装 Python 依赖 ============
 if not exist "%VENV_DIR%\requirements.installed" (
     echo [!] 安装 Python 依赖...
-    pip install -r "%PYTHON_DIR%\requirements.txt" --quiet
+    echo     依赖文件: %PYTHON_DIR%\requirements.txt
+    if not exist "%PYTHON_DIR%\requirements.txt" (
+        echo [X] 找不到 requirements.txt 文件: %PYTHON_DIR%\requirements.txt
+        pause
+        exit /b 1
+    )
+    "%VENV_DIR%\Scripts\pip.exe" install -r "%PYTHON_DIR%\requirements.txt"
     if %errorlevel% neq 0 (
         echo [X] Python 依赖安装失败
         pause
@@ -86,7 +92,7 @@ if not exist "%ROOT_DIR%node_modules" (
 
 :: ============ 启动语音服务 ============
 echo [*] 启动语音服务...
-start /b "" "%VENV_DIR%\Scripts\python.exe" "%PYTHON_DIR%\voice_service.py" --port 17599 --parent-pid %PID%
+start "" /b "%VENV_DIR%\Scripts\python.exe" "%PYTHON_DIR%\voice_service.py" --port 17599
 :: 给语音服务一点启动时间
 timeout /t 2 /nobreak >nul
 echo [√] 语音服务已启动 (端口 17599)
