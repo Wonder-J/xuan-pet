@@ -5,7 +5,8 @@ python-multipart>=0.0.9
 pydantic>=2.0.0
 edge-tts>=6.1.0
 
-# Local TTS (Qwen3-TTS)
-qwen-tts>=0.1.0
-torch>=2.0.0
-soundfile
+# Local TTS (Qwen3-TTS) — optional, install manually if needed:
+#   pip install qwen-tts torch soundfile
+# qwen-tts>=0.1.0
+# torch>=2.0.0
+# soundfile

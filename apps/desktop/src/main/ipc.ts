@@ -20,7 +20,9 @@ function getEmotionDir(emotion: PetEmotion): string {
 }
 
 function toAssetURL(filePath: string): string {
-  return `pet-asset://file${filePath}`;
+  // Encode the path so Windows backslashes and colons don't break the URL
+  const encoded = encodeURIComponent(filePath);
+  return `pet-asset://file/${encoded}`;
 }
 
 export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
@@ -207,10 +209,41 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
     }
   );
 
-  // Window drag — renderer sends screen-coord deltas
+  // Window drag — legacy fallback (single move)
   ipcMain.on('window:move', (_event, { dx, dy }: { dx: number; dy: number }) => {
+    if (dx === 0 && dy === 0) return;
     const [x, y] = win.getPosition();
-    win.setPosition(x + dx, y + dy);
+    win.setPosition(x + dx, y + dy, false);
+  });
+
+  // Window drag — main-process cursor polling (no IPC flooding)
+  let dragInterval: ReturnType<typeof setInterval> | null = null;
+  let dragCursorX = 0;
+  let dragCursorY = 0;
+
+  ipcMain.on('window:drag-start', (_event, { screenX, screenY }: { screenX: number; screenY: number }) => {
+    if (dragInterval) return; // already dragging
+    dragCursorX = screenX;
+    dragCursorY = screenY;
+    // Poll cursor position at ~120Hz — no IPC needed during drag
+    dragInterval = setInterval(() => {
+      const cursor = screen.getCursorScreenPoint();
+      const dx = cursor.x - dragCursorX;
+      const dy = cursor.y - dragCursorY;
+      if (dx !== 0 || dy !== 0) {
+        const [wx, wy] = win.getPosition();
+        win.setPosition(wx + dx, wy + dy, false);
+        dragCursorX = cursor.x;
+        dragCursorY = cursor.y;
+      }
+    }, 8);
+  });
+
+  ipcMain.on('window:drag-end', () => {
+    if (dragInterval) {
+      clearInterval(dragInterval);
+      dragInterval = null;
+    }
   });
 
   // Window resize for panels — keep bottom edge and horizontal center anchored
@@ -265,7 +298,8 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
   // Remove a specific animation file (receives pet-asset:// URL, convert back)
   ipcMain.handle('animations:remove', (_event, assetURL: string) => {
     try {
-      const filePath = decodeURIComponent(assetURL.replace('pet-asset://file', ''));
+      const url = new URL(assetURL);
+      const filePath = decodeURIComponent(url.pathname.slice(1));
       if (existsSync(filePath)) unlinkSync(filePath);
       return true;
     } catch {

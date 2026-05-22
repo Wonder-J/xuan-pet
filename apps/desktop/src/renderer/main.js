@@ -111,14 +111,14 @@ document.addEventListener('dragstart', (e) => {
 });
 
 // ============ Pet Drag (left-click drag) ============
+// Drag is handled in the main process via cursor polling.
+// Renderer only sends drag-start / drag-end signals (2 IPC calls total).
 let mouseDownOnPet = false;
 
 document.addEventListener('mousedown', (e) => {
-  console.log('[event] mousedown button=' + e.button, e.screenX, e.screenY);
   // Right-click / two-finger click → show context menu
   if (e.button === 2) {
     e.preventDefault();
-    console.log('[menu] right-click detected via mousedown');
     api.showContextMenu();
     return;
   }
@@ -135,25 +135,25 @@ document.addEventListener('mousedown', (e) => {
 
 document.addEventListener('mousemove', (e) => {
   if (!mouseDownOnPet) return;
-  const dx = e.screenX - dragStartX;
-  const dy = e.screenY - dragStartY;
-  if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-    if (!isDragging) {
+  if (!isDragging) {
+    const dx = e.screenX - dragStartX;
+    const dy = e.screenY - dragStartY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
       isDragging = true;
       // Show drag animation
       if (hasCustomFrames('drag')) {
         const frames = petAnimations['drag'];
         showFrame(frames[Math.floor(Math.random() * frames.length)]);
       }
+      // Tell main process to start polling cursor for window movement
+      api.dragStart(e.screenX, e.screenY);
     }
-    api.moveWindow(dx, dy);
-    dragStartX = e.screenX;
-    dragStartY = e.screenY;
   }
 });
 
 document.addEventListener('mouseup', () => {
   if (isDragging) {
+    api.dragEnd();
     returnToIdle();
   }
   mouseDownOnPet = false;
@@ -1352,7 +1352,7 @@ async function prepareVoiceAudio(text) {
     if (!plainText) return null;
     const result = await api.voiceSpeak(plainText);
     if (result.audioPath) {
-      const audio = new Audio(`pet-asset://file${result.audioPath}`);
+      const audio = new Audio(`pet-asset://file/${encodeURIComponent(result.audioPath)}`);
       // Wait for audio to be loadable
       await new Promise((resolve) => {
         audio.addEventListener('canplaythrough', resolve, { once: true });

@@ -106,9 +106,10 @@ function createTray(): void {
 app.whenReady().then(() => {
   // Register protocol to serve local files securely
   protocol.handle('pet-asset', (request) => {
-    // pet-asset://file/absolute/path/to/file.webp?t=123
+    // pet-asset://file/<encoded-path>?t=123
     const url = new URL(request.url);
-    const filePath = decodeURIComponent(url.pathname);
+    // pathname is /encodedPath, strip leading slash then decode
+    const filePath = decodeURIComponent(url.pathname.slice(1));
     return net.fetch(pathToFileURL(filePath).toString());
   });
 

@@ -1,6 +1,8 @@
 {
   "name": "desktop-pet",
-  "version": "1.0.1",
+  "version": "1.0.2",
+  "description": "A desktop pet application",
+  "author": "Your Name",
   "private": true,
   "main": "dist/main/index.js",
   "scripts": {
@@ -23,7 +25,7 @@
   "devDependencies": {
     "@types/node": "^20.11.0",
     "electron": "^28.3.3",
-    "electron-builder": "^24.9.1",
+    "electron-builder": "^26.8.1",
     "electron-vite": "^2.0.0",
     "typescript": "^5.3.3",
     "vite": "^5.0.11"
@@ -41,7 +43,9 @@
     },
     "win": {
       "target": "zip",
-      "icon": "src/renderer/assets/icons/win/icon.ico"
+      "icon": "src/renderer/assets/icons/win/icon.ico",
+      "signAndEditExecutable": false,
+      "forceCodeSigning": false
     },
     "linux": {
       "target": "AppImage"

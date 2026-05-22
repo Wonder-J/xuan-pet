@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('api', {
   // Window
   setIgnoreMouse: (ignore: boolean) => ipcRenderer.send('window:set-ignore-mouse', ignore),
   moveWindow: (dx: number, dy: number) => ipcRenderer.send('window:move', { dx, dy }),
+  dragStart: (screenX: number, screenY: number) => ipcRenderer.send('window:drag-start', { screenX, screenY }),
+  dragEnd: () => ipcRenderer.send('window:drag-end'),
   resizeWindow: (width: number, height: number) =>
     ipcRenderer.invoke('window:resize', { width, height }),
 
