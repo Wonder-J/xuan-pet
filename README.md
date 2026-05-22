@@ -1,211 +1,214 @@
-# 玄神
+# 🐾 玄参 Xuan-Pet — AI 桌面宠物
 
-一个基于 Electron 构建的 AI 桌面宠物应用。它常驻桌面、支持透明点击穿透、托盘驻留、AI 对话、动作资源导入、技能注入和定时发言。
+<p align="center">
+  <strong>一只会说话、唱歌、卖萌的 AI 桌面宠物 / An AI desktop pet that talks, sings, and acts cute</strong>
+</p>
 
-## 功能
+<p align="center">
+  <a href="#功能特色">功能</a> •
+  <a href="#快速开始">快速开始</a> •
+  <a href="#语音-tts">语音</a> •
+  <a href="#导出导入">导出/导入</a> •
+  <a href="#打包">打包</a> •
+  <a href="#features">English</a> •
+  <a href="#请作者喝杯咖啡">赞赏</a>
+</p>
 
-- 透明无边框桌宠窗口，常驻桌面顶部
-- 透明区域点击穿透，可与桌面正常交互
-- 托盘菜单控制显示、隐藏和退出
-- 支持多家 AI 服务商切换
-- 支持自定义系统提示词，调整宠物性格和说话风格
-- 支持导入不同情绪动作资源
-- 支持本地歌单导入
-- 支持技能库管理，可导入 Markdown 或文本技能文档
-- 技能内容会自动注入 AI 系统提示词
-- 支持定时任务，让宠物按间隔自动发言
-- 定时气泡按队列显示，避免多个气泡冲突
+---
 
-## 当前支持的 AI 提供商
+## 功能特色
 
-- OpenAI
-- Anthropic
-- MiniMax
-- DeepSeek
-- 智谱 AI
+| 功能 | 说明 |
+|------|------|
+| 💬 AI 聊天 | 支持 OpenAI 兼容接口，可接入任意大模型 |
+| 🗣️ 语音 TTS | Edge-TTS（在线）+ Qwen3-TTS（本地克隆音色） |
+| ⏰ 定时说话 | 按间隔自动调用 AI，配合语音播报 |
+| 🎵 歌单 | 导入本地音乐，宠物随歌起舞 |
+| 📚 技能库 | 导入 `.md` / `.txt` 作为宠物知识 |
+| 🎭 多情绪动作 | happy / idle / move / drag / sing / angry / sad / surprise / scared / sleep |
+| 🚶 自由漫游 | 宠物在屏幕上自由走动 |
+| 📦 导出/导入 | `.xpet` 格式一键备份和恢复全部配置 |
+| 🖥️ 跨平台 | macOS (DMG) / Windows (zip) / Linux (AppImage) |
 
-## 技术栈
+---
 
-- Electron 28
-- electron-vite
-- TypeScript
-- Vanilla JavaScript + HTML + CSS
-- electron-store
-- marked
-- pnpm workspace
+## 快速开始
 
-## 项目结构
+### 环境要求
 
-```text
-.
-├── apps/
-│   └── desktop/
-│       ├── src/
-│       │   ├── main/        # Electron 主进程
-│       │   ├── preload/     # 预加载桥接 API
-│       │   └── renderer/    # 渲染进程界面
-│       └── package.json
-├── packages/
-│   └── shared/
-│       └── src/             # 共享类型与常量
-├── package.json
-└── pnpm-workspace.yaml
-```
+- Node.js ≥ 18
+- pnpm（建议通过 `corepack enable` 启用）
+- Python 3.10+（如需语音功能）
 
-## 开发环境要求
-
-- Node.js 18 及以上
-- pnpm
-
-建议先启用 Corepack：
+### 开发模式
 
 ```bash
-corepack enable
-```
+# macOS / Linux
+./start.sh
 
-## 安装依赖
+# Windows
+start.bat
 
-```bash
+# 或手动执行
 pnpm install
-```
-
-## 本地开发
-
-```bash
 pnpm dev
 ```
 
-开发模式会启动 Electron 应用。
+`start.sh` / `start.bat` 会自动创建 Python 虚拟环境、安装语音依赖并启动开发服务。
 
-## 构建
+### 首次使用
 
-```bash
-pnpm build
+1. 右键托盘图标 → 打开设置
+2. 选择 AI 提供商，填写 API Key
+3. 按需修改模型名称和系统提示词
+4. 保存 → 测试聊天
+
+---
+
+## 语音 TTS
+
+支持两种 TTS 引擎：
+
+| 引擎 | 特点 | 要求 |
+|------|------|------|
+| **Edge-TTS** | 微软在线语音，多语种多音色 | 联网 |
+| **Qwen3-TTS** | 阿里本地模型，支持音色克隆 | Python + ~2GB 显存/内存 |
+
+- 应用首次启动语音功能时会自动在 `~/.xuanshen/.venv` 创建虚拟环境并安装依赖
+- 打包后的应用同样支持语音（自动管理 Python 环境）
+- 定时说话开启语音后，气泡会等待语音合成完毕再弹出
+
+---
+
+## 导出/导入
+
+通过菜单「导出配置」「导入配置」可将宠物全部数据打包为 `.xpet` 文件：
+
+**包含内容：**
+- 所有设置（AI配置、提示词、宠物参数）
+- 技能文档
+- 动作资源（图片/GIF）
+- 歌单音频
+- 语音配置与自定义音频
+
+可用于备份、迁移至其他电脑、或分享给朋友。
+
+---
+
+## 项目结构
+
+```
+xuanshen/
+├── apps/desktop/          # Electron 主应用
+│   ├── src/main/          # 主进程（窗口、IPC、AI、语音）
+│   ├── src/preload/       # 预加载脚本
+│   ├── src/renderer/      # 渲染进程（UI）
+│   └── python/            # Python 语音服务
+├── packages/shared/       # 共享类型与常量
+├── start.sh               # macOS/Linux 一键启动
+├── start.bat              # Windows 一键启动
+└── pnpm-workspace.yaml
 ```
 
-构建输出位于应用包内部的 `dist` 目录中，主要用于后续打包。
+---
 
 ## 打包
 
-根目录已提供统一脚本：
-
 ```bash
-# 生成目录形式的包
-pnpm pack
-
-# 按 apps/desktop/package.json 中的 build 配置打包
-pnpm dist
-
-# 仅打包 macOS
-pnpm dist:mac
-
-# 仅打包 Windows
-pnpm dist:win
-
-# 同时打包 macOS 和 Windows
-pnpm dist:all
+pnpm dist:mac    # macOS DMG
+pnpm dist:win    # Windows zip
+pnpm dist:all    # 全平台
 ```
 
-当前打包配置：
+产物输出到 `apps/desktop/release/`。
 
-- macOS: `dmg`
-- Windows: `zip`
-- Linux: `AppImage`
-
-打包产物输出到：
-
-```text
-apps/desktop/release/
-```
-
-## Windows 说明
-
-项目已做过基础 Windows 兼容处理，包括：
-
-- 托盘点击行为适配
-- 文件路径处理适配
-- 置顶窗口层级适配
-
-当前 Windows 默认输出为 `zip` 便携包。如果你需要安装式 `.exe`，通常要依赖 `electron-builder` 的 Windows 打包链路以及额外环境支持；在 macOS 上跨平台打包该格式时，稳定性会受 Wine 和相关依赖影响。
-
-## 首次使用
-
-建议按下面顺序配置：
-
-1. 打开设置面板
-2. 选择 AI 提供商
-3. 填写对应 API Key
-4. 按需修改模型名称和系统提示词
-5. 保存设置
-6. 测试聊天是否正常返回
-
-## 主要能力说明
-
-### 1. 聊天
-
-在聊天面板中直接输入内容，主进程会读取当前提供商配置并发起请求。
-
-### 2. 技能库
-
-可以创建或导入技能文档，支持 `.md` 和 `.txt`。技能内容会被自动追加到系统提示词中，作为宠物的能力背景。
-
-### 3. 定时说话
-
-可以配置任务提示词和执行间隔。任务启用后会按固定间隔调用 AI，并通过气泡展示结果。若当前已有气泡，新气泡会进入队列，等待上一个气泡关闭或消失后再展示。
-
-### 4. 动作资源
-
-可以为不同情绪导入图片或动画资源，目前支持的情绪包括：
-
-- happy
-- idle
-- move
-- drag
-- sing
-- angry
-- sad
-- surprise
-- scared
-- sleep
-
-### 5. 歌单
-
-支持导入本地音频文件作为歌单资源。
+---
 
 ## 数据存储
 
-应用使用 `electron-store` 持久化设置，包含：
+- 使用 `electron-store` 持久化设置
+- API Key 仅保存在主进程侧，不暴露到渲染进程
+- 语音数据存储在 `~/.xuanshen/voice_data/`
+- Python 虚拟环境位于 `~/.xuanshen/.venv/`
 
-- 当前 AI 提供商
-- API Key 与模型配置
-- 系统提示词
-- 宠物大小与透明度
-- 技能列表
-- 定时任务列表
-
-API Key 保存在主进程侧，不会暴露到渲染进程代码中。
-
-## 关键文件
-
-- `apps/desktop/src/main/index.ts`：窗口创建、托盘、协议注册
-- `apps/desktop/src/main/ipc.ts`：IPC、聊天、技能、定时任务、资源管理
-- `apps/desktop/src/main/ai.ts`：AI 请求封装
-- `apps/desktop/src/main/store.ts`：本地设置存储
-- `apps/desktop/src/preload/index.ts`：渲染进程可调用 API
-- `apps/desktop/src/renderer/`：界面与交互逻辑
-- `packages/shared/src/index.ts`：共享类型、默认提供商、常量
+---
 
 ## 已知事项
 
-- 当前未配置应用图标，打包时会使用 Electron 默认图标
-- 当前未配置 macOS 签名，生成的包可用于本地分发和测试
-- Windows 默认采用 `zip` 输出而不是安装包
-- 透明窗口在不同平台上的渲染表现可能略有差异
+- macOS 未签名，首次打开需右键选择「打开」
+- Windows 为 zip 便携包，解压即用
+- 透明窗口在不同平台渲染表现可能略有差异
 
-## 后续可扩展方向
+---
+
+## 后续规划
 
 - 接入 Live2D 作为桌宠渲染层
-- 增加流式对话输出
-- 增加更多互动动作和状态机
-- 为技能增加分类、启停和优先级
-- 增加自动启动、开机启动与系统通知
+- 流式对话输出
+- 更多互动动作和状态机
+- 技能分类、启停和优先级
+
+---
+
+---
+
+# English
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| 💬 AI Chat | OpenAI-compatible API, works with any LLM |
+| 🗣️ Voice TTS | Edge-TTS (online) + Qwen3-TTS (local voice cloning) |
+| ⏰ Scheduled Talk | Auto AI calls at intervals with voice playback |
+| 🎵 Playlist | Import local music, pet dances along |
+| 📚 Skills | Import `.md` / `.txt` as pet knowledge |
+| 🎭 Emotions | 10 emotion states with custom animations |
+| 🚶 Roaming | Pet roams freely on screen |
+| 📦 Export/Import | `.xpet` format for full config backup |
+| 🖥️ Cross-platform | macOS / Windows / Linux |
+
+## Quick Start
+
+```bash
+# macOS / Linux
+./start.sh
+
+# Windows
+start.bat
+```
+
+The scripts auto-create a Python venv at `~/.xuanshen/.venv` and install TTS dependencies.
+
+## Development
+
+```bash
+pnpm install
+pnpm dev
+```
+
+## Build & Package
+
+```bash
+pnpm dist:mac    # macOS DMG
+pnpm dist:win    # Windows zip
+pnpm dist:all    # All platforms
+```
+
+---
+
+## 请作者喝杯咖啡
+
+如果觉得玄参有趣，欢迎请作者喝杯咖啡 ☕
+
+If you find Xuan-Pet fun, buy the author a coffee ☕
+
+<p align="center">
+  <img src="docs/images/donate.png" width="300" alt="赞赏码" />
+</p>
+
+---
+
+## License
+
+MIT
