@@ -1,6 +1,6 @@
 {
   "name": "desktop-pet",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "main": "dist/main/index.js",
   "scripts": {
@@ -51,8 +51,12 @@
     ],
     "extraResources": [
       {
-        "from": "python/dist/voice_service",
-        "to": "python/voice_service"
+        "from": "python/voice_service.py",
+        "to": "python/voice_service.py"
+      },
+      {
+        "from": "python/requirements.txt",
+        "to": "python/requirements.txt"
       }
     ],
     "extraMetadata": {

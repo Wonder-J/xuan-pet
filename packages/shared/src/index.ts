@@ -29,7 +29,6 @@ export interface MenuShortcuts {
   playlist: string;
   scheduled: string;
   roaming: string;
-  fullscreen: string;
   video: string;
 }
 

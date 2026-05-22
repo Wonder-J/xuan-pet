@@ -4,7 +4,7 @@
  */
 import { app } from 'electron';
 import { join } from 'path';
-import { existsSync } from 'fs';
+import { existsSync, mkdirSync } from 'fs';
 import { is } from '@electron-toolkit/utils';
 import { ChildProcess, spawn } from 'child_process';
 
@@ -34,6 +34,74 @@ function getVenvPython(): string {
   return join(venvDir, 'bin', 'python');
 }
 
+function getProjectVenv(): string {
+  // Project-level venv (from workspace root)
+  const projectVenv = join(__dirname, '../../../../.venv');
+  if (process.platform === 'win32') {
+    return join(projectVenv, 'Scripts', 'python.exe');
+  }
+  return join(projectVenv, 'bin', 'python');
+}
+
+import { execSync } from 'child_process';
+
+/**
+ * Ensure ~/.xuanshen/.venv exists with required packages.
+ * Creates venv and installs deps on first run.
+ * Returns the python path or null if setup failed.
+ */
+function ensureXuanshenVenv(): string | null {
+  const home = app.getPath('home');
+  const venvDir = join(home, '.xuanshen', '.venv');
+  const venvPython = join(venvDir, 'bin', 'python');
+
+  if (existsSync(venvPython)) {
+    return venvPython;
+  }
+
+  console.log('[voice] Creating ~/.xuanshen/.venv ...');
+
+  // Find a base python to create venv with
+  const basePythonCandidates = [
+    '/opt/homebrew/bin/python3',
+    '/usr/local/bin/python3',
+    join(home, '.pyenv', 'shims', 'python3'),
+    '/usr/bin/python3',
+  ];
+  let basePython: string | null = null;
+  for (const p of basePythonCandidates) {
+    if (existsSync(p)) { basePython = p; break; }
+  }
+  if (!basePython) {
+    console.error('[voice] No base python found to create venv');
+    return null;
+  }
+
+  try {
+    const xuanshenDir = join(home, '.xuanshen');
+    if (!existsSync(xuanshenDir)) {
+      mkdirSync(xuanshenDir, { recursive: true });
+    }
+    // Create venv
+    execSync(`"${basePython}" -m venv "${venvDir}"`, { timeout: 30000 });
+    // Install deps
+    const reqFile = join(process.resourcesPath || join(app.getAppPath(), '../'), 'python', 'requirements.txt');
+    if (existsSync(reqFile)) {
+      console.log('[voice] Installing deps from:', reqFile);
+      execSync(`"${venvPython}" -m pip install -r "${reqFile}" --quiet`, { timeout: 120000 });
+    } else {
+      // Fallback: install minimal deps directly
+      console.log('[voice] Installing minimal voice deps...');
+      execSync(`"${venvPython}" -m pip install edge-tts fastapi uvicorn soundfile --quiet`, { timeout: 120000 });
+    }
+    console.log('[voice] Venv setup complete:', venvDir);
+    return venvPython;
+  } catch (err) {
+    console.error('[voice] Failed to create venv:', err);
+    return null;
+  }
+}
+
 export async function startVoiceService(): Promise<boolean> {
   if (voiceProcess || isStarting) return true;
   isStarting = true;
@@ -54,9 +122,12 @@ export async function startVoiceService(): Promise<boolean> {
     if (is.dev) {
       // Dev mode: prefer venv python, fallback to system python
       const venvPython = getVenvPython();
+      const projectVenv = getProjectVenv();
       const pythonCmd = existsSync(venvPython)
         ? venvPython
-        : (process.platform === 'win32' ? 'python' : 'python3');
+        : existsSync(projectVenv)
+          ? projectVenv
+          : (process.platform === 'win32' ? 'python' : 'python3');
       console.log('[voice] Using python:', pythonCmd);
       voiceProcess = spawn(pythonCmd, [
         servicePath,
@@ -67,18 +138,55 @@ export async function startVoiceService(): Promise<boolean> {
         env: { ...process.env },
       });
     } else {
-      // Production: run bundled binary
-      if (!existsSync(servicePath)) {
-        console.error('[voice] Binary not found:', servicePath);
-        isStarting = false;
-        return false;
+      // Production: try bundled binary first, then fallback to system python
+      if (existsSync(servicePath)) {
+        voiceProcess = spawn(servicePath, [
+          '--port', String(VOICE_SERVICE_PORT),
+          '--parent-pid', String(process.pid),
+        ], {
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+      } else {
+        // No bundled binary — try system python with the script from resources
+        const resourcesPath = process.resourcesPath || join(app.getAppPath(), '../');
+        const scriptPath = join(resourcesPath, 'python', 'voice_service.py');
+        // Also try the original source location (if app is run from build dir near source)
+        const devScript = join(app.getAppPath(), '..', '..', 'python', 'voice_service.py');
+        const script = existsSync(scriptPath) ? scriptPath : existsSync(devScript) ? devScript : null;
+
+        if (!script) {
+          console.error('[voice] No voice service binary or script found');
+          console.error('[voice] Tried:', servicePath, scriptPath, devScript);
+          isStarting = false;
+          return false;
+        }
+
+        // Ensure ~/.xuanshen/.venv exists with deps (auto-creates on first run)
+        const pythonCmd = ensureXuanshenVenv();
+        if (!pythonCmd) {
+          console.error('[voice] Failed to setup Python environment');
+          isStarting = false;
+          return false;
+        }
+
+        console.log('[voice] Production fallback: using python:', pythonCmd, 'script:', script);
+        // Augment PATH so subprocess can find its own deps
+        const augmentedPath = [
+          '/opt/homebrew/bin',
+          '/usr/local/bin',
+          join(app.getPath('home'), '.pyenv', 'shims'),
+          process.env.PATH || '/usr/bin:/bin',
+        ].join(':');
+
+        voiceProcess = spawn(pythonCmd, [
+          script,
+          '--port', String(VOICE_SERVICE_PORT),
+          '--parent-pid', String(process.pid),
+        ], {
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, PATH: augmentedPath },
+        });
       }
-      voiceProcess = spawn(servicePath, [
-        '--port', String(VOICE_SERVICE_PORT),
-        '--parent-pid', String(process.pid),
-      ], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
     }
 
     voiceProcess.stdout?.on('data', (data) => {
@@ -173,7 +281,7 @@ export async function voiceDeleteVoice(voiceId: string): Promise<any> {
   return res.json();
 }
 
-export async function voiceSpeak(text: string, voiceId?: string, language: string = 'Auto', engine?: string): Promise<Buffer> {
+export async function voiceSpeak(text: string, voiceId?: string, language: string = 'Chinese', engine?: string): Promise<Buffer> {
   const body: any = { text, language };
   if (voiceId) body.voice_id = voiceId;
   if (engine) body.engine = engine;

@@ -34,7 +34,6 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
     playlist: 'playlist',
     scheduled: 'scheduled',
     roaming: 'roaming',
-    fullscreen: 'fullscreen',
     video: 'video',
   };
 
@@ -221,18 +220,6 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
     const dx = oldWidth - width;
     const dy = oldHeight - height;
     win.setBounds({ x: x + Math.round(dx / 2), y: y + dy, width, height });
-  });
-
-  // Fullscreen toggle
-  ipcMain.handle('window:fullscreen', (_event, fullscreen: boolean) => {
-    if (fullscreen) {
-      win.setAlwaysOnTop(false);
-      win.setResizable(true);
-      win.setFullScreen(true);
-    } else {
-      win.setFullScreen(false);
-      win.setAlwaysOnTop(true, process.platform === 'darwin' ? 'floating' : 'screen-saver');
-    }
   });
 
   // ============ Pet Animations ============
@@ -699,21 +686,74 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
   });
 
   // ============ Voice TTS ============
-  ipcMain.handle('voice:get-models', async () => {
-    try {
-      if (!isVoiceServiceRunning()) {
-        await startVoiceService();
+  const VOICE_DATA_DIR = join(app.getPath('home'), '.xuanshen', 'voices');
+  if (!existsSync(VOICE_DATA_DIR)) mkdirSync(VOICE_DATA_DIR, { recursive: true });
+
+  const EDGE_TTS_VOICES = [
+    { id: 'zh-CN-XiaoxiaoNeural', name: '晓晓 (女声-温柔)', type: 'edge_tts', lang: 'zh' },
+    { id: 'zh-CN-YunxiNeural', name: '云希 (男声-阳光)', type: 'edge_tts', lang: 'zh' },
+    { id: 'zh-CN-YunjianNeural', name: '云健 (男声-沉稳)', type: 'edge_tts', lang: 'zh' },
+    { id: 'zh-CN-XiaoyiNeural', name: '晓依 (女声-活泼)', type: 'edge_tts', lang: 'zh' },
+    { id: 'zh-CN-YunyangNeural', name: '云扬 (男声-新闻)', type: 'edge_tts', lang: 'zh' },
+    { id: 'zh-TW-HsiaoChenNeural', name: '曉臻 (女声-台湾)', type: 'edge_tts', lang: 'zh' },
+    { id: 'en-US-JennyNeural', name: 'Jenny (Female-EN)', type: 'edge_tts', lang: 'en' },
+    { id: 'en-US-GuyNeural', name: 'Guy (Male-EN)', type: 'edge_tts', lang: 'en' },
+    { id: 'ja-JP-NanamiNeural', name: '七海 (女声-日语)', type: 'edge_tts', lang: 'ja' },
+  ];
+
+  const QWEN_SPEAKERS = [
+    { id: 'qwen:Vivian', name: 'Vivian (女声-明亮)', type: 'qwen_tts', lang: 'zh' },
+    { id: 'qwen:Serena', name: 'Serena (女声-温暖)', type: 'qwen_tts', lang: 'zh' },
+    { id: 'qwen:Uncle_Fu', name: 'Uncle Fu (男声-沉稳)', type: 'qwen_tts', lang: 'zh' },
+    { id: 'qwen:Dylan', name: 'Dylan (男声-北京)', type: 'qwen_tts', lang: 'zh' },
+    { id: 'qwen:Eric', name: 'Eric (男声-四川)', type: 'qwen_tts', lang: 'zh' },
+    { id: 'qwen:Ryan', name: 'Ryan (Male-EN)', type: 'qwen_tts', lang: 'en' },
+    { id: 'qwen:Aiden', name: 'Aiden (Male-EN)', type: 'qwen_tts', lang: 'en' },
+    { id: 'qwen:Ono_Anna', name: 'Ono Anna (女声-日语)', type: 'qwen_tts', lang: 'ja' },
+    { id: 'qwen:Sohee', name: 'Sohee (女声-韩语)', type: 'qwen_tts', lang: 'ko' },
+  ];
+
+  function getLocalVoices() {
+    const voices = [...EDGE_TTS_VOICES, ...QWEN_SPEAKERS];
+    // Scan custom voices directory
+    if (existsSync(VOICE_DATA_DIR)) {
+      const files = readdirSync(VOICE_DATA_DIR);
+      for (const f of files.sort()) {
+        if (/\.(wav|mp3|flac|ogg|m4a)$/i.test(f)) {
+          voices.push({
+            id: `custom:${f}`,
+            name: `🎙 ${f.replace(/\.[^.]+$/, '')}`,
+            type: 'custom',
+            lang: 'any',
+          });
+        }
       }
+    }
+    return voices;
+  }
+
+  ipcMain.handle('voice:get-models', async () => {
+    // Try service first for accurate download status, fall back to local data
+    try {
+      if (!isVoiceServiceRunning()) await startVoiceService();
       return await voiceGetModels();
-    } catch (err: any) {
-      return { error: err.message };
+    } catch {
+      // Service unavailable — return local fallback
+      return {
+        models: [
+          { id: 'edge_tts', name: 'Edge TTS (在线)', installed: true, downloaded: true, size_hint: '0MB', description: '微软在线语音合成，无需下载，多种中/英/日声线' },
+          { id: 'qwen_tts_0.6b', name: 'Qwen3-TTS 0.6B (本地)', installed: true, downloaded: false, size_hint: '~1.2GB', description: 'Qwen3-TTS 0.6B 本地语音合成+克隆' },
+          { id: 'qwen_tts_1.7b', name: 'Qwen3-TTS 1.7B (本地-高质量)', installed: true, downloaded: false, size_hint: '~3.5GB', description: 'Qwen3-TTS 1.7B 高质量语音合成+克隆' },
+        ],
+      };
     }
   });
 
   ipcMain.handle('voice:download-model', async (_event, modelId: string) => {
     try {
       if (!isVoiceServiceRunning()) {
-        await startVoiceService();
+        const started = await startVoiceService();
+        if (!started) return { error: '语音服务启动失败。请确保已安装 Python 3 和依赖: pip3 install edge-tts fastapi uvicorn soundfile' };
       }
       return await voiceDownloadModel(modelId);
     } catch (err: any) {
@@ -722,25 +762,19 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
   });
 
   ipcMain.handle('voice:select-model', async (_event, modelId: string) => {
+    // Update local store immediately (always works)
+    const current = store.get('voice', { enabled: false, modelId: 'edge_tts', selectedVoiceId: '' }) as VoiceSettings;
+    store.set('voice', { ...current, modelId });
+    // Notify service if running (best effort)
     try {
-      if (!isVoiceServiceRunning()) {
-        await startVoiceService();
-      }
-      return await voiceSelectModel(modelId);
-    } catch (err: any) {
-      return { error: err.message };
-    }
+      if (isVoiceServiceRunning()) await voiceSelectModel(modelId);
+    } catch { /* ignore */ }
+    return { status: 'ok', current_engine: modelId };
   });
 
   ipcMain.handle('voice:get-voices', async () => {
-    try {
-      if (!isVoiceServiceRunning()) {
-        await startVoiceService();
-      }
-      return await voiceGetVoices();
-    } catch (err: any) {
-      return { error: err.message };
-    }
+    // Return locally-computed voice list (no service needed)
+    return { voices: getLocalVoices() };
   });
 
   ipcMain.handle('voice:upload-sample', async () => {
@@ -751,21 +785,34 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
     });
     if (result.canceled || result.filePaths.length === 0) return null;
     try {
-      if (!isVoiceServiceRunning()) {
-        await startVoiceService();
+      const srcPath = result.filePaths[0];
+      const srcName = basename(srcPath);
+      // Sanitize filename
+      let safeName = srcName.replace(/[^a-zA-Z0-9._\- \u4e00-\u9fff]/g, '');
+      if (!safeName) safeName = 'voice_sample.wav';
+      let destPath = join(VOICE_DATA_DIR, safeName);
+      const base = safeName.replace(/\.[^.]+$/, '');
+      const ext = extname(safeName);
+      let counter = 1;
+      while (existsSync(destPath)) {
+        destPath = join(VOICE_DATA_DIR, `${base}_${counter}${ext}`);
+        counter++;
       }
-      return await voiceUploadSample(result.filePaths[0]);
+      copyFileSync(srcPath, destPath);
+      const finalName = basename(destPath);
+      return { id: `custom:${finalName}`, name: finalName.replace(/\.[^.]+$/, ''), path: destPath };
     } catch (err: any) {
       return { error: err.message };
     }
   });
 
   ipcMain.handle('voice:delete-voice', async (_event, voiceId: string) => {
+    if (!voiceId.startsWith('custom:')) return { error: 'Can only delete custom voices' };
+    const filename = voiceId.replace('custom:', '');
+    const filePath = join(VOICE_DATA_DIR, filename);
     try {
-      if (!isVoiceServiceRunning()) {
-        await startVoiceService();
-      }
-      return await voiceDeleteVoice(voiceId);
+      if (existsSync(filePath)) unlinkSync(filePath);
+      return { status: 'deleted' };
     } catch (err: any) {
       return { error: err.message };
     }
@@ -777,7 +824,7 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
     try {
       if (!isVoiceServiceRunning()) {
         const started = await startVoiceService();
-        if (!started) return { error: '语音服务启动失败' };
+        if (!started) return { error: '语音服务启动失败。请确保已安装 Python 3 和依赖: pip3 install edge-tts fastapi uvicorn soundfile' };
       }
       const audioBuffer = await voiceSpeak(text, voiceSettings.selectedVoiceId || undefined, 'Auto', voiceSettings.modelId || 'edge_tts');
       // Write to temp file and return path for renderer to play
@@ -908,11 +955,6 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
         label: isRoaming ? '🚶 停止走动' : '🚶 随意走动',
         accelerator: shortcuts.roaming || undefined,
         click: () => win.webContents.send('menu:action', 'roaming'),
-      },
-      {
-        label: win.isFullScreen() ? '↕️ 退出全屏' : '↕️ 全屏',
-        accelerator: shortcuts.fullscreen || undefined,
-        click: () => win.webContents.send('menu:action', 'fullscreen'),
       },
       { type: 'separator' },
       {

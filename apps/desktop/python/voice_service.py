@@ -170,7 +170,7 @@ def load_qwen_model(model_key: str, mode: str = "custom_voice"):
         qwen_loading = False
 
 
-def qwen_custom_voice_speak(text: str, speaker: str, model_key: str, language: str = "Auto") -> str:
+def qwen_custom_voice_speak(text: str, speaker: str, model_key: str, language: str = "Chinese") -> str:
     """Generate speech with Qwen3-TTS CustomVoice model (preset speakers)."""
     import soundfile as sf
     model = load_qwen_model(model_key, "custom_voice")
@@ -185,7 +185,7 @@ def qwen_custom_voice_speak(text: str, speaker: str, model_key: str, language: s
     return output_path
 
 
-def qwen_voice_clone_speak(text: str, ref_audio: str, ref_text: str, model_key: str, language: str = "Auto") -> str:
+def qwen_voice_clone_speak(text: str, ref_audio: str, ref_text: str, model_key: str, language: str = "Chinese") -> str:
     """Generate speech with Qwen3-TTS Base model (voice clone)."""
     import soundfile as sf
     model = load_qwen_model(model_key, "base")
@@ -212,7 +212,7 @@ class SpeakRequest(BaseModel):
     text: str
     engine: Optional[str] = None
     voice_id: Optional[str] = None
-    language: str = "Auto"
+    language: str = "Chinese"
 
 
 class ModelInfo(BaseModel):

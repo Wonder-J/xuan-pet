@@ -31,7 +31,6 @@ export function createStore(): Store<AppSettings> {
         playlist: '',
         scheduled: '',
         roaming: '',
-        fullscreen: '',
         video: defaultVideoShortcut,
       },
       voice: {

@@ -13,8 +13,6 @@ contextBridge.exposeInMainWorld('api', {
   moveWindow: (dx: number, dy: number) => ipcRenderer.send('window:move', { dx, dy }),
   resizeWindow: (width: number, height: number) =>
     ipcRenderer.invoke('window:resize', { width, height }),
-  toggleFullscreen: (fullscreen: boolean) =>
-    ipcRenderer.invoke('window:fullscreen', fullscreen),
 
   // Context menu
   showContextMenu: () => ipcRenderer.send('window:context-menu'),

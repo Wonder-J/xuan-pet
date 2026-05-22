@@ -13,7 +13,7 @@ let currentPanel = null;
 const PET_SIZE = { width: 200, height: 250 };
 const PANEL_SIZE = { width: 400, height: 550 };
 const ANIM_PANEL_SIZE = { width: 560, height: 650 };
-let isFullscreen = false;
+
 
 // ============ Animation State ============
 let petAnimations = { happy: [], idle: [], move: [], drag: [], sing: [], angry: [], sad: [], surprise: [], scared: [], sleep: [] };
@@ -73,7 +73,6 @@ const SHORTCUT_FIELDS = [
   { key: 'playlist', label: '歌单设置' },
   { key: 'scheduled', label: '定时说话' },
   { key: 'roaming', label: '随意走动' },
-  { key: 'fullscreen', label: '全屏' },
   { key: 'video', label: '播放B站视频' },
 ];
 
@@ -266,8 +265,6 @@ api.onMenuAction((action) => {
   } else if (action === 'voice-settings') {
     openPanel('voice-settings-panel');
     loadVoiceSettings();
-  } else if (action === 'fullscreen') {
-    toggleFullscreen();
   } else if (action === 'roaming') {
     toggleRoaming();
   }
@@ -298,11 +295,6 @@ api.onQuickChatResult(async (result) => {
     hideLoadingBubble();
   }
 });
-
-async function toggleFullscreen() {
-  isFullscreen = !isFullscreen;
-  await api.toggleFullscreen(isFullscreen);
-}
 
 // ============ Panel Management ============
 async function openPanel(panelId, size) {
@@ -1259,8 +1251,16 @@ function hideBubble() {
 }
 
 // Listen for scheduled task results
-api.onScheduledResult(({ content }) => {
-  showBubble(content);
+api.onScheduledResult(async ({ content }) => {
+  if (voiceEnabled) {
+    showLoadingBubble();
+    const audio = await prepareVoiceAudio(content);
+    hideLoadingBubble();
+    showBubble(content);
+    if (audio) audio.play().catch(() => {});
+  } else {
+    showBubble(content);
+  }
 });
 
 // ============ Video Bubble ============
@@ -1364,11 +1364,25 @@ async function loadVoiceSettings() {
 
   try {
     const settings = await api.voiceGetSettings();
-    const modelsResult = await api.voiceGetModels();
-    const voicesResult = await api.voiceGetVoices();
+    let models = [];
+    let voices = [];
+    try {
+      const modelsResult = await api.voiceGetModels();
+      models = modelsResult?.models || [];
+    } catch { /* service not available */ }
+    try {
+      const voicesResult = await api.voiceGetVoices();
+      voices = voicesResult?.voices || [];
+    } catch { /* service not available */ }
 
-    const models = modelsResult?.models || [];
-    const voices = voicesResult?.voices || [];
+    // Fallback: always show at least edge_tts if service returned nothing
+    if (models.length === 0) {
+      models = [
+        { id: 'edge_tts', name: 'Edge TTS (在线)', installed: true, downloaded: true, size_hint: '0MB', description: '微软在线语音合成，无需下载' },
+        { id: 'qwen_tts_0.6b', name: 'Qwen3-TTS 0.6B (本地)', installed: true, downloaded: false, size_hint: '~1.2GB', description: 'Qwen3-TTS 0.6B 本地语音合成+克隆' },
+        { id: 'qwen_tts_1.7b', name: 'Qwen3-TTS 1.7B (本地-高质量)', installed: true, downloaded: false, size_hint: '~3.5GB', description: 'Qwen3-TTS 1.7B 高质量语音合成+克隆' },
+      ];
+    }
 
     let html = `
       <div class="voice-section">
@@ -1443,10 +1457,8 @@ async function loadVoiceSettings() {
         </select>
     `;
 
-    // Show upload button for Qwen-TTS engines (voice clone)
-    if (isQwenEngine) {
-      html += `<button id="voice-upload-btn" class="voice-upload-btn">📁 上传语音样本 (用于声线克隆)</button>`;
-    }
+    // Upload button always available (file saved locally)
+    html += `<button id="voice-upload-btn" class="voice-upload-btn">📁 上传语音样本 (用于声线克隆)</button>`;
 
     html += `
       </div>
