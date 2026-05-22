@@ -227,7 +227,7 @@ document.addEventListener('mouseup', () => {
 });
 
 // Handle menu action from main process (tray or context menu)
-api.onMenuAction((action) => {
+api.onMenuAction(async (action) => {
   console.log('[menu] action:', action);
   if (action === 'chat') {
     openPanel('chat-panel');
@@ -267,6 +267,14 @@ api.onMenuAction((action) => {
     loadVoiceSettings();
   } else if (action === 'roaming') {
     toggleRoaming();
+  } else if (action === 'export-config') {
+    const result = await api.exportConfig();
+    if (result?.success) showBubble('✅ 配置已导出到: ' + result.path);
+    else if (result?.error) showBubble('❌ 导出失败: ' + result.error);
+  } else if (action === 'import-config') {
+    const result = await api.importConfig();
+    if (result?.success) showBubble('✅ 配置导入成功！重启后完全生效');
+    else if (result?.error) showBubble('❌ 导入失败: ' + result.error);
   }
 });
 

@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain, Menu, app, dialog, screen, globalShortcut, clipboard } from 'electron';
-import { copyFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, readFileSync, writeFileSync } from 'fs';
+import { copyFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, readFileSync, writeFileSync, cpSync, rmSync } from 'fs';
 import { join, extname, basename } from 'path';
+import { execSync } from 'child_process';
 import { is } from '@electron-toolkit/utils';
 import Store from 'electron-store';
 import { AppSettings, IPC_CHANNELS, ChatMessage, PetEmotion, PetAnimations, Skill, ScheduledTask, MenuShortcuts, VoiceSettings } from '@xuanshen/shared';
@@ -847,6 +848,161 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
     return updated;
   });
 
+  // ============ Export / Import Pet Config Pack ============
+  ipcMain.handle('config:export', async () => {
+    const result = await dialog.showSaveDialog(win, {
+      title: '导出宠物配置包',
+      defaultPath: join(app.getPath('desktop'), 'xuanshen-pet-config.zip'),
+      filters: [{ name: 'Zip 配置包', extensions: ['zip'] }],
+    });
+    if (result.canceled || !result.filePath) return { canceled: true };
+
+    try {
+      const tmpDir = join(app.getPath('temp'), `xuanshen-export-${Date.now()}`);
+      mkdirSync(tmpDir, { recursive: true });
+
+      // 1. Export settings (systemPrompt, skills, scheduledTasks, voice config - NO API keys)
+      const settings = store.store;
+      const exportedSettings = {
+        systemPrompt: settings.systemPrompt,
+        petSize: settings.petSize,
+        petOpacity: settings.petOpacity,
+        quickChatPlaceholder: settings.quickChatPlaceholder,
+        skills: settings.skills,
+        scheduledTasks: settings.scheduledTasks,
+        voice: { modelId: settings.voice?.modelId, selectedVoiceId: settings.voice?.selectedVoiceId },
+      };
+      writeFileSync(join(tmpDir, 'config.json'), JSON.stringify(exportedSettings, null, 2), 'utf-8');
+
+      // 2. Copy animations
+      const animDir = getAnimationsDir();
+      if (existsSync(animDir)) {
+        cpSync(animDir, join(tmpDir, 'animations'), { recursive: true });
+      }
+
+      // 3. Copy custom voices
+      if (existsSync(VOICE_DATA_DIR)) {
+        const voiceFiles = readdirSync(VOICE_DATA_DIR).filter(f => /\.(wav|mp3|flac|ogg|m4a)$/i.test(f));
+        if (voiceFiles.length > 0) {
+          const voicesDir = join(tmpDir, 'voices');
+          mkdirSync(voicesDir, { recursive: true });
+          for (const f of voiceFiles) {
+            copyFileSync(join(VOICE_DATA_DIR, f), join(voicesDir, f));
+          }
+        }
+      }
+
+      // 4. Copy songs
+      const songsDir = getSongsDir();
+      if (existsSync(songsDir)) {
+        const songFiles = readdirSync(songsDir).filter(f => /\.(mp3|wav|ogg|flac|m4a)$/i.test(f));
+        if (songFiles.length > 0) {
+          const songsExportDir = join(tmpDir, 'songs');
+          mkdirSync(songsExportDir, { recursive: true });
+          for (const f of songFiles) {
+            copyFileSync(join(songsDir, f), join(songsExportDir, f));
+          }
+        }
+      }
+
+      // 5. Zip it
+      const zipPath = result.filePath;
+      if (process.platform === 'win32') {
+        execSync(`powershell -Command "Compress-Archive -Path '${tmpDir}\\*' -DestinationPath '${zipPath}' -Force"`, { timeout: 30000 });
+      } else {
+        execSync(`cd "${tmpDir}" && zip -r "${zipPath}" .`, { timeout: 30000 });
+      }
+
+      // Cleanup tmp
+      rmSync(tmpDir, { recursive: true, force: true });
+      return { success: true, path: zipPath };
+    } catch (err: any) {
+      return { error: err.message };
+    }
+  });
+
+  ipcMain.handle('config:import', async () => {
+    const result = await dialog.showOpenDialog(win, {
+      title: '导入宠物配置包',
+      filters: [{ name: 'Zip 配置包', extensions: ['zip'] }],
+      properties: ['openFile'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return { canceled: true };
+
+    try {
+      const zipPath = result.filePaths[0];
+      const tmpDir = join(app.getPath('temp'), `xuanshen-import-${Date.now()}`);
+      mkdirSync(tmpDir, { recursive: true });
+
+      // Unzip
+      if (process.platform === 'win32') {
+        execSync(`powershell -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${tmpDir}' -Force"`, { timeout: 30000 });
+      } else {
+        execSync(`unzip -o "${zipPath}" -d "${tmpDir}"`, { timeout: 30000 });
+      }
+
+      // 1. Import config
+      const configPath = join(tmpDir, 'config.json');
+      if (existsSync(configPath)) {
+        const imported = JSON.parse(readFileSync(configPath, 'utf-8'));
+        if (imported.systemPrompt) store.set('systemPrompt', imported.systemPrompt);
+        if (imported.petSize) store.set('petSize', imported.petSize);
+        if (imported.petOpacity !== undefined) store.set('petOpacity', imported.petOpacity);
+        if (imported.quickChatPlaceholder) store.set('quickChatPlaceholder', imported.quickChatPlaceholder);
+        if (imported.skills) store.set('skills', imported.skills);
+        if (imported.scheduledTasks) store.set('scheduledTasks', imported.scheduledTasks);
+        if (imported.voice) {
+          const currentVoice = store.get('voice') as VoiceSettings;
+          store.set('voice', { ...currentVoice, modelId: imported.voice.modelId || currentVoice.modelId, selectedVoiceId: imported.voice.selectedVoiceId || currentVoice.selectedVoiceId });
+        }
+      }
+
+      // 2. Import animations (merge, don't overwrite)
+      const importedAnimDir = join(tmpDir, 'animations');
+      if (existsSync(importedAnimDir)) {
+        const animDir = getAnimationsDir();
+        cpSync(importedAnimDir, animDir, { recursive: true });
+      }
+
+      // 3. Import custom voices
+      const importedVoicesDir = join(tmpDir, 'voices');
+      if (existsSync(importedVoicesDir)) {
+        const files = readdirSync(importedVoicesDir).filter(f => /\.(wav|mp3|flac|ogg|m4a)$/i.test(f));
+        for (const f of files) {
+          const destPath = join(VOICE_DATA_DIR, f);
+          if (!existsSync(destPath)) {
+            copyFileSync(join(importedVoicesDir, f), destPath);
+          }
+        }
+      }
+
+      // 4. Import songs
+      const importedSongsDir = join(tmpDir, 'songs');
+      if (existsSync(importedSongsDir)) {
+        const songsDir = getSongsDir();
+        const files = readdirSync(importedSongsDir).filter(f => /\.(mp3|wav|ogg|flac|m4a)$/i.test(f));
+        for (const f of files) {
+          const destPath = join(songsDir, f);
+          if (!existsSync(destPath)) {
+            copyFileSync(join(importedSongsDir, f), destPath);
+          }
+        }
+      }
+
+      // Cleanup tmp
+      rmSync(tmpDir, { recursive: true, force: true });
+
+      // Restart scheduled task timers with new config
+      const newTasks = store.get('scheduledTasks', []) as ScheduledTask[];
+      for (const [id] of taskTimers) { stopTaskTimer(id); }
+      for (const task of newTasks) { if (task.enabled) startTaskTimer(task); }
+
+      return { success: true };
+    } catch (err: any) {
+      return { error: err.message };
+    }
+  });
+
   // Native right-click context menu
   ipcMain.on('window:context-menu', () => {
     const isRoaming = roamingEnabled;
@@ -955,6 +1111,20 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
         label: isRoaming ? '🚶 停止走动' : '🚶 随意走动',
         accelerator: shortcuts.roaming || undefined,
         click: () => win.webContents.send('menu:action', 'roaming'),
+      },
+      { type: 'separator' },
+      {
+        label: '📦 导入/导出',
+        submenu: [
+          {
+            label: '📤 导出配置包',
+            click: () => win.webContents.send('menu:action', 'export-config'),
+          },
+          {
+            label: '📥 导入配置包',
+            click: () => win.webContents.send('menu:action', 'import-config'),
+          },
+        ],
       },
       { type: 'separator' },
       {

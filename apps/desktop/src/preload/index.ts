@@ -79,4 +79,8 @@ contextBridge.exposeInMainWorld('api', {
   voiceSetSettings: (settings: any) => ipcRenderer.invoke('voice:set-settings', settings),
   onVoiceEnabledChanged: (callback: (enabled: boolean) => void) =>
     ipcRenderer.on('voice:enabled-changed', (_event, enabled) => callback(enabled)),
+
+  // Export / Import
+  exportConfig: () => ipcRenderer.invoke('config:export'),
+  importConfig: () => ipcRenderer.invoke('config:import'),
 });
