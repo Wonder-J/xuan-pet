@@ -1,7 +1,6 @@
 import { BrowserWindow, ipcMain, Menu, app, dialog, screen, globalShortcut, clipboard } from 'electron';
-import { copyFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, readFileSync, writeFileSync, cpSync, rmSync } from 'fs';
+import { copyFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { join, extname, basename } from 'path';
-import { execSync } from 'child_process';
 import { is } from '@electron-toolkit/utils';
 import Store from 'electron-store';
 import { AppSettings, IPC_CHANNELS, ChatMessage, PetEmotion, PetAnimations, Skill, ScheduledTask, MenuShortcuts, VoiceSettings } from '@xuanshen/shared';
@@ -849,73 +848,62 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
   });
 
   // ============ Export / Import Pet Config Pack ============
+  function collectFilesAsBase64(dir: string, extensions: RegExp): Record<string, string> {
+    const result: Record<string, string> = {};
+    if (!existsSync(dir)) return result;
+    const walk = (currentDir: string, prefix: string) => {
+      for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          walk(join(currentDir, entry.name), prefix ? `${prefix}/${entry.name}` : entry.name);
+        } else if (extensions.test(entry.name)) {
+          const key = prefix ? `${prefix}/${entry.name}` : entry.name;
+          result[key] = readFileSync(join(currentDir, entry.name)).toString('base64');
+        }
+      }
+    };
+    walk(dir, '');
+    return result;
+  }
+
+  function restoreFilesFromBase64(files: Record<string, string>, destDir: string, overwrite = false) {
+    for (const [relativePath, base64Data] of Object.entries(files)) {
+      const destPath = join(destDir, ...relativePath.split('/'));
+      if (!overwrite && existsSync(destPath)) continue;
+      const destFolder = join(destPath, '..');
+      if (!existsSync(destFolder)) mkdirSync(destFolder, { recursive: true });
+      writeFileSync(destPath, Buffer.from(base64Data, 'base64'));
+    }
+  }
+
   ipcMain.handle('config:export', async () => {
     const result = await dialog.showSaveDialog(win, {
       title: '导出宠物配置包',
-      defaultPath: join(app.getPath('desktop'), 'xuanshen-pet-config.zip'),
-      filters: [{ name: 'Zip 配置包', extensions: ['zip'] }],
+      defaultPath: join(app.getPath('desktop'), 'xuanshen-pet-config.xpet'),
+      filters: [{ name: '玄神配置包', extensions: ['xpet'] }],
     });
     if (result.canceled || !result.filePath) return { canceled: true };
 
     try {
-      const tmpDir = join(app.getPath('temp'), `xuanshen-export-${Date.now()}`);
-      mkdirSync(tmpDir, { recursive: true });
-
-      // 1. Export settings (systemPrompt, skills, scheduledTasks, voice config - NO API keys)
       const settings = store.store;
-      const exportedSettings = {
-        systemPrompt: settings.systemPrompt,
-        petSize: settings.petSize,
-        petOpacity: settings.petOpacity,
-        quickChatPlaceholder: settings.quickChatPlaceholder,
-        skills: settings.skills,
-        scheduledTasks: settings.scheduledTasks,
-        voice: { modelId: settings.voice?.modelId, selectedVoiceId: settings.voice?.selectedVoiceId },
+
+      const exportData = {
+        version: 1,
+        config: {
+          systemPrompt: settings.systemPrompt,
+          petSize: settings.petSize,
+          petOpacity: settings.petOpacity,
+          quickChatPlaceholder: settings.quickChatPlaceholder,
+          skills: settings.skills,
+          scheduledTasks: settings.scheduledTasks,
+          voice: { modelId: settings.voice?.modelId, selectedVoiceId: settings.voice?.selectedVoiceId },
+        },
+        animations: collectFilesAsBase64(getAnimationsDir(), /\.(webp|gif|png|apng)$/i),
+        voices: collectFilesAsBase64(VOICE_DATA_DIR, /\.(wav|mp3|flac|ogg|m4a)$/i),
+        songs: collectFilesAsBase64(getSongsDir(), /\.(mp3|wav|ogg|flac|m4a)$/i),
       };
-      writeFileSync(join(tmpDir, 'config.json'), JSON.stringify(exportedSettings, null, 2), 'utf-8');
 
-      // 2. Copy animations
-      const animDir = getAnimationsDir();
-      if (existsSync(animDir)) {
-        cpSync(animDir, join(tmpDir, 'animations'), { recursive: true });
-      }
-
-      // 3. Copy custom voices
-      if (existsSync(VOICE_DATA_DIR)) {
-        const voiceFiles = readdirSync(VOICE_DATA_DIR).filter(f => /\.(wav|mp3|flac|ogg|m4a)$/i.test(f));
-        if (voiceFiles.length > 0) {
-          const voicesDir = join(tmpDir, 'voices');
-          mkdirSync(voicesDir, { recursive: true });
-          for (const f of voiceFiles) {
-            copyFileSync(join(VOICE_DATA_DIR, f), join(voicesDir, f));
-          }
-        }
-      }
-
-      // 4. Copy songs
-      const songsDir = getSongsDir();
-      if (existsSync(songsDir)) {
-        const songFiles = readdirSync(songsDir).filter(f => /\.(mp3|wav|ogg|flac|m4a)$/i.test(f));
-        if (songFiles.length > 0) {
-          const songsExportDir = join(tmpDir, 'songs');
-          mkdirSync(songsExportDir, { recursive: true });
-          for (const f of songFiles) {
-            copyFileSync(join(songsDir, f), join(songsExportDir, f));
-          }
-        }
-      }
-
-      // 5. Zip it
-      const zipPath = result.filePath;
-      if (process.platform === 'win32') {
-        execSync(`powershell -Command "Compress-Archive -Path '${tmpDir}\\*' -DestinationPath '${zipPath}' -Force"`, { timeout: 30000 });
-      } else {
-        execSync(`cd "${tmpDir}" && zip -r "${zipPath}" .`, { timeout: 30000 });
-      }
-
-      // Cleanup tmp
-      rmSync(tmpDir, { recursive: true, force: true });
-      return { success: true, path: zipPath };
+      writeFileSync(result.filePath, JSON.stringify(exportData), 'utf-8');
+      return { success: true, path: result.filePath };
     } catch (err: any) {
       return { error: err.message };
     }
@@ -924,73 +912,46 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
   ipcMain.handle('config:import', async () => {
     const result = await dialog.showOpenDialog(win, {
       title: '导入宠物配置包',
-      filters: [{ name: 'Zip 配置包', extensions: ['zip'] }],
+      filters: [{ name: '玄神配置包', extensions: ['xpet'] }],
       properties: ['openFile'],
     });
     if (result.canceled || result.filePaths.length === 0) return { canceled: true };
 
     try {
-      const zipPath = result.filePaths[0];
-      const tmpDir = join(app.getPath('temp'), `xuanshen-import-${Date.now()}`);
-      mkdirSync(tmpDir, { recursive: true });
+      const raw = readFileSync(result.filePaths[0], 'utf-8');
+      const data = JSON.parse(raw);
 
-      // Unzip
-      if (process.platform === 'win32') {
-        execSync(`powershell -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${tmpDir}' -Force"`, { timeout: 30000 });
-      } else {
-        execSync(`unzip -o "${zipPath}" -d "${tmpDir}"`, { timeout: 30000 });
+      if (!data.version || !data.config) {
+        return { error: '无效的配置包文件' };
       }
 
       // 1. Import config
-      const configPath = join(tmpDir, 'config.json');
-      if (existsSync(configPath)) {
-        const imported = JSON.parse(readFileSync(configPath, 'utf-8'));
-        if (imported.systemPrompt) store.set('systemPrompt', imported.systemPrompt);
-        if (imported.petSize) store.set('petSize', imported.petSize);
-        if (imported.petOpacity !== undefined) store.set('petOpacity', imported.petOpacity);
-        if (imported.quickChatPlaceholder) store.set('quickChatPlaceholder', imported.quickChatPlaceholder);
-        if (imported.skills) store.set('skills', imported.skills);
-        if (imported.scheduledTasks) store.set('scheduledTasks', imported.scheduledTasks);
-        if (imported.voice) {
-          const currentVoice = store.get('voice') as VoiceSettings;
-          store.set('voice', { ...currentVoice, modelId: imported.voice.modelId || currentVoice.modelId, selectedVoiceId: imported.voice.selectedVoiceId || currentVoice.selectedVoiceId });
-        }
+      const cfg = data.config;
+      if (cfg.systemPrompt) store.set('systemPrompt', cfg.systemPrompt);
+      if (cfg.petSize) store.set('petSize', cfg.petSize);
+      if (cfg.petOpacity !== undefined) store.set('petOpacity', cfg.petOpacity);
+      if (cfg.quickChatPlaceholder) store.set('quickChatPlaceholder', cfg.quickChatPlaceholder);
+      if (cfg.skills) store.set('skills', cfg.skills);
+      if (cfg.scheduledTasks) store.set('scheduledTasks', cfg.scheduledTasks);
+      if (cfg.voice) {
+        const currentVoice = store.get('voice') as VoiceSettings;
+        store.set('voice', { ...currentVoice, modelId: cfg.voice.modelId || currentVoice.modelId, selectedVoiceId: cfg.voice.selectedVoiceId || currentVoice.selectedVoiceId });
       }
 
-      // 2. Import animations (merge, don't overwrite)
-      const importedAnimDir = join(tmpDir, 'animations');
-      if (existsSync(importedAnimDir)) {
-        const animDir = getAnimationsDir();
-        cpSync(importedAnimDir, animDir, { recursive: true });
+      // 2. Import animations
+      if (data.animations && Object.keys(data.animations).length > 0) {
+        restoreFilesFromBase64(data.animations, getAnimationsDir());
       }
 
-      // 3. Import custom voices
-      const importedVoicesDir = join(tmpDir, 'voices');
-      if (existsSync(importedVoicesDir)) {
-        const files = readdirSync(importedVoicesDir).filter(f => /\.(wav|mp3|flac|ogg|m4a)$/i.test(f));
-        for (const f of files) {
-          const destPath = join(VOICE_DATA_DIR, f);
-          if (!existsSync(destPath)) {
-            copyFileSync(join(importedVoicesDir, f), destPath);
-          }
-        }
+      // 3. Import voices
+      if (data.voices && Object.keys(data.voices).length > 0) {
+        restoreFilesFromBase64(data.voices, VOICE_DATA_DIR);
       }
 
       // 4. Import songs
-      const importedSongsDir = join(tmpDir, 'songs');
-      if (existsSync(importedSongsDir)) {
-        const songsDir = getSongsDir();
-        const files = readdirSync(importedSongsDir).filter(f => /\.(mp3|wav|ogg|flac|m4a)$/i.test(f));
-        for (const f of files) {
-          const destPath = join(songsDir, f);
-          if (!existsSync(destPath)) {
-            copyFileSync(join(importedSongsDir, f), destPath);
-          }
-        }
+      if (data.songs && Object.keys(data.songs).length > 0) {
+        restoreFilesFromBase64(data.songs, getSongsDir());
       }
-
-      // Cleanup tmp
-      rmSync(tmpDir, { recursive: true, force: true });
 
       // Restart scheduled task timers with new config
       const newTasks = store.get('scheduledTasks', []) as ScheduledTask[];
