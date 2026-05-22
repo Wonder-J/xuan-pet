@@ -199,7 +199,7 @@ pnpm dist:all    # All platforms
 
 ## 请作者喝杯咖啡
 
-如果觉得玄参有趣，欢迎请作者喝杯咖啡 ☕
+如果觉得有趣，欢迎请作者喝杯咖啡 ☕
 
 If you find Xuan-Pet fun, buy the author a coffee ☕
 
