@@ -423,13 +423,37 @@ body {
 
 /* Interact */
 .interact-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
   padding: 12px;
   flex: 1;
   overflow-y: auto;
   min-height: 0;
+}
+
+.interact-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.interact-item .interact-btn {
+  flex: 1;
+}
+
+.interact-item .remove-btn {
+  padding: 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}
+
+.interact-item .remove-btn:hover {
+  opacity: 1;
 }
 
 .interact-btn {
@@ -440,6 +464,7 @@ body {
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
+  text-align: left;
 }
 
 .interact-btn:hover {
@@ -448,12 +473,97 @@ body {
   transform: scale(1.02);
 }
 
+.panel-footer {
+  padding: 8px 12px;
+  border-top: 1px solid #eee;
+}
+
+.panel-footer .action-btn {
+  width: 100%;
+  padding: 10px;
+  border: 1px dashed #ccc;
+  border-radius: 8px;
+  background: #fafafa;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.panel-footer .action-btn:hover {
+  border-color: #7c5cfc;
+  background: #f5f0ff;
+}
+
 .interact-response {
   padding: 0 12px 12px;
   font-size: 13px;
   color: #666;
   text-align: center;
   min-height: 30px;
+}
+
+/* Input Dialog */
+.input-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.input-dialog {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 260px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.input-dialog-title {
+  font-size: 14px;
+  margin-bottom: 12px;
+  color: #333;
+}
+
+.input-dialog-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.input-dialog-input:focus {
+  border-color: #7c5cfc;
+}
+
+.input-dialog-btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.input-dialog-btns button {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.input-dialog-cancel {
+  background: #f0f0f0;
+  color: #666;
+}
+
+.input-dialog-ok {
+  background: #7c5cfc;
+  color: white;
 }
 
 /* Settings */

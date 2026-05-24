@@ -36,6 +36,7 @@ const petContainer = document.getElementById('pet-container');
 const petSprite = document.getElementById('pet-sprite');
 const chatPanel = document.getElementById('chat-panel');
 const interactPanel = document.getElementById('interact-panel');
+const toolsPanel = document.getElementById('tools-panel');
 const settingsPanel = document.getElementById('settings-panel');
 const animationsPanel = document.getElementById('animations-panel');
 const animationsContent = document.getElementById('animations-content');
@@ -61,7 +62,6 @@ const apiKeyInput = document.getElementById('api-key-input');
 const modelInput = document.getElementById('model-input');
 const saveSettingsBtn = document.getElementById('save-settings-btn');
 const systemPromptInput = document.getElementById('system-prompt-input');
-const interactResponse = document.getElementById('interact-response');
 const DEFAULT_QUICK_CHAT_PLACEHOLDER = '你想问龙哥什么';
 const SHORTCUT_FIELDS = [
   { key: 'quickChat', label: '快速聊天' },
@@ -101,7 +101,7 @@ function makeInteractive(el) {
 makeInteractive(petContainer);
 
 // All panels are interactive when visible
-for (const panel of [chatPanel, interactPanel, settingsPanel, animationsPanel, playlistPanel, songPickerPanel, skillsPanel, scheduledPanel, quickChatSettingsPanel, shortcutSettingsPanel]) {
+for (const panel of [chatPanel, interactPanel, toolsPanel, settingsPanel, animationsPanel, playlistPanel, songPickerPanel, skillsPanel, scheduledPanel, quickChatSettingsPanel, shortcutSettingsPanel]) {
   if (panel) makeInteractive(panel);
 }
 
@@ -158,6 +158,14 @@ document.addEventListener('mouseup', () => {
   }
   mouseDownOnPet = false;
   isDragging = false;
+});
+
+// ============ Single-click with Tool ============
+petContainer.addEventListener('click', async (e) => {
+  if (activeToolId) {
+    e.stopPropagation();
+    await handleToolClick();
+  }
 });
 
 // ============ Double-click → Random Animation ============
@@ -233,6 +241,16 @@ api.onMenuAction(async (action) => {
     openPanel('chat-panel');
   } else if (action === 'interact') {
     openPanel('interact-panel');
+    loadInteractionsPanel();
+  } else if (action === 'tools') {
+    openPanel('tools-panel');
+    loadToolsPanel();
+  } else if (action.startsWith('play-interaction:')) {
+    const id = action.replace('play-interaction:', '');
+    playInteraction(id);
+  } else if (action.startsWith('use-tool:')) {
+    const id = action.replace('use-tool:', '');
+    toggleTool(id);
   } else if (action === 'settings') {
     openPanel('settings-panel');
     loadSettings();
@@ -320,7 +338,7 @@ async function openPanel(panelId, size) {
 }
 
 function closeAllPanels(skipResize) {
-  [chatPanel, interactPanel, settingsPanel, animationsPanel, playlistPanel, songPickerPanel, skillsPanel, scheduledPanel, quickChatSettingsPanel, shortcutSettingsPanel, voiceSettingsPanel].forEach((p) => {
+  [chatPanel, interactPanel, toolsPanel, settingsPanel, animationsPanel, playlistPanel, songPickerPanel, skillsPanel, scheduledPanel, quickChatSettingsPanel, shortcutSettingsPanel, voiceSettingsPanel].forEach((p) => {
     if (p) p.classList.remove('visible');
   });
   currentPanel = null;
@@ -435,27 +453,149 @@ chatInput.addEventListener('keydown', (e) => {
   }
 });
 
-// ============ Interact ============
-const INTERACT_RESPONSES = {
-  pet: ['嘿嘿，好舒服呀~ 🥰', '摸摸头，心情好好！✨', '再摸摸嘛~ 😊'],
-  feed: ['好好吃！谢谢主人~ 🍖', '吃饱饱，力气大大！💪', '还想吃！再来一个~ 😋'],
-  play: ['好开心！再来再来！⚽', '玩累了，休息一下下~ 😄', '主人最棒了！🎉'],
-  sleep: ['zzZ... 晚安~ 😴', '困了困了... 💤', '让我眯一会儿... 🌙'],
-};
+// ============ Custom Interactions ============
+async function loadInteractionsPanel() {
+  const list = await api.getInteractions();
+  const container = document.getElementById('interactions-list');
+  container.innerHTML = '';
+  if (list.length === 0) {
+    container.innerHTML = '<div style="padding:12px;color:#999;text-align:center;">暂无自定义互动，点击下方按钮添加</div>';
+  } else {
+    list.forEach((item) => {
+      const row = document.createElement('div');
+      row.className = 'interact-item';
+      row.innerHTML = `
+        <button class="interact-btn" data-interaction-id="${item.id}">${item.name}</button>
+        <button class="remove-btn" data-remove-interaction="${item.id}">🗑</button>
+      `;
+      container.appendChild(row);
+    });
+  }
 
-document.querySelectorAll('.interact-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const action = btn.dataset.interact;
-    const responses = INTERACT_RESPONSES[action];
-    const response = responses[Math.floor(Math.random() * responses.length)];
-    interactResponse.textContent = response;
-
-    // Map interaction to emotion
-    const emotionMap = { pet: 'happy', feed: 'happy', play: 'surprise', sleep: 'sleep' };
-    const emotion = emotionMap[action] || 'happy';
-    playEmotion(emotion, ACTION_DURATION);
+  // Play buttons
+  container.querySelectorAll('[data-interaction-id]').forEach((btn) => {
+    btn.addEventListener('click', () => playInteraction(btn.dataset.interactionId));
   });
+  // Remove buttons
+  container.querySelectorAll('[data-remove-interaction]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      await api.removeInteraction(btn.dataset.removeInteraction);
+      loadInteractionsPanel();
+    });
+  });
+}
+
+document.getElementById('add-interaction-btn').addEventListener('click', async () => {
+  const name = await showInputDialog('输入互动名称');
+  if (!name) return;
+  const result = await api.createInteraction(name);
+  if (result) loadInteractionsPanel();
 });
+
+async function playInteraction(id) {
+  const assets = await api.getInteractionAssets(id);
+  if (!assets) return;
+  closeAllPanels();
+
+  // Play animation (loop until audio ends)
+  const audio = new Audio(assets.audioUrl);
+  showFrame(assets.animationUrl);
+
+  audio.addEventListener('ended', () => {
+    returnToIdle();
+  });
+  audio.addEventListener('error', () => {
+    returnToIdle();
+  });
+  audio.play().catch(() => returnToIdle());
+}
+
+// ============ Custom Tools ============
+let activeToolId = null;
+let activeToolCursorUrl = null;
+
+async function loadToolsPanel() {
+  const list = await api.getTools();
+  const container = document.getElementById('tools-list');
+  container.innerHTML = '';
+  if (list.length === 0) {
+    container.innerHTML = '<div style="padding:12px;color:#999;text-align:center;">暂无自定义工具，点击下方按钮添加</div>';
+  } else {
+    list.forEach((item) => {
+      const row = document.createElement('div');
+      row.className = 'interact-item';
+      row.innerHTML = `
+        <button class="interact-btn tool-btn" data-tool-id="${item.id}">${item.name}${activeToolId === item.id ? ' ✓' : ''}</button>
+        <button class="remove-btn" data-remove-tool="${item.id}">🗑</button>
+      `;
+      container.appendChild(row);
+    });
+  }
+
+  // Use tool buttons
+  container.querySelectorAll('[data-tool-id]').forEach((btn) => {
+    btn.addEventListener('click', () => toggleTool(btn.dataset.toolId));
+  });
+  // Remove buttons
+  container.querySelectorAll('[data-remove-tool]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (activeToolId === btn.dataset.removeTool) deactivateTool();
+      await api.removeTool(btn.dataset.removeTool);
+      loadToolsPanel();
+    });
+  });
+}
+
+document.getElementById('add-tool-btn').addEventListener('click', async () => {
+  const name = await showInputDialog('输入工具名称');
+  if (!name) return;
+  const result = await api.createTool(name);
+  if (result) loadToolsPanel();
+});
+
+async function toggleTool(id) {
+  if (activeToolId === id) {
+    deactivateTool();
+    loadToolsPanel();
+    return;
+  }
+  const assets = await api.getToolAssets(id);
+  if (!assets) return;
+  activeToolId = id;
+  activeToolCursorUrl = assets.iconUrl;
+  // Set custom cursor on pet area
+  document.getElementById('pet-sprite').style.cursor = `url("${assets.iconUrl}") 16 16, pointer`;
+  document.body.style.cursor = `url("${assets.iconUrl}") 16 16, pointer`;
+  closeAllPanels();
+}
+
+function deactivateTool() {
+  activeToolId = null;
+  activeToolCursorUrl = null;
+  document.getElementById('pet-sprite').style.cursor = '';
+  document.body.style.cursor = '';
+}
+
+async function handleToolClick() {
+  if (!activeToolId) return false;
+  const assets = await api.getToolAssets(activeToolId);
+  if (!assets) return false;
+
+  // Play tool animation and audio
+  const audio = new Audio(assets.audioUrl);
+  showFrame(assets.animationUrl);
+
+  audio.addEventListener('ended', () => {
+    returnToIdle();
+    deactivateTool();
+  });
+  audio.addEventListener('error', () => {
+    returnToIdle();
+    deactivateTool();
+  });
+  audio.play().catch(() => { returnToIdle(); deactivateTool(); });
+  return true;
+}
 
 // ============ Settings ============
 async function loadSettings() {
@@ -1185,6 +1325,34 @@ function hideLoadingBubble() {
   if (bubble && bubble.classList.contains('loading-bubble')) {
     bubble.remove();
   }
+}
+
+// ============ Input Dialog (replacement for unsupported prompt()) ============
+function showInputDialog(message) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'input-dialog-overlay';
+    overlay.innerHTML = `
+      <div class="input-dialog">
+        <div class="input-dialog-title">${message}</div>
+        <input type="text" class="input-dialog-input" autofocus />
+        <div class="input-dialog-btns">
+          <button class="input-dialog-cancel">取消</button>
+          <button class="input-dialog-ok">确定</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('.input-dialog-input');
+    input.focus();
+    const close = (value) => { overlay.remove(); resolve(value); };
+    overlay.querySelector('.input-dialog-cancel').addEventListener('click', () => close(null));
+    overlay.querySelector('.input-dialog-ok').addEventListener('click', () => close(input.value.trim() || null));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') close(input.value.trim() || null);
+      if (e.key === 'Escape') close(null);
+    });
+  });
 }
 
 function showBubble(content) {

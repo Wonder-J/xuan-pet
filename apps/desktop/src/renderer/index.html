@@ -34,16 +34,25 @@
     <!-- Interact Panel -->
     <div id="interact-panel" class="panel">
       <div class="panel-header">
-        <span>🎮 互动</span>
+        <span>🎮 互动管理</span>
         <button class="close-btn" data-close="interact-panel">✕</button>
       </div>
-      <div class="interact-actions">
-        <button class="interact-btn" data-interact="pet">🤚 摸摸头</button>
-        <button class="interact-btn" data-interact="feed">🍖 喂食</button>
-        <button class="interact-btn" data-interact="play">⚽ 玩耍</button>
-        <button class="interact-btn" data-interact="sleep">😴 睡觉</button>
+      <div class="interact-actions" id="interactions-list"></div>
+      <div class="panel-footer">
+        <button id="add-interaction-btn" class="action-btn">＋ 新建互动</button>
       </div>
-      <div id="interact-response" class="interact-response"></div>
+    </div>
+
+    <!-- Tools Panel -->
+    <div id="tools-panel" class="panel">
+      <div class="panel-header">
+        <span>🔧 工具管理</span>
+        <button class="close-btn" data-close="tools-panel">✕</button>
+      </div>
+      <div class="interact-actions" id="tools-list"></div>
+      <div class="panel-footer">
+        <button id="add-tool-btn" class="action-btn">＋ 新建工具</button>
+      </div>
     </div>
 
     <!-- Settings Panel -->

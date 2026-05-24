@@ -85,4 +85,16 @@ contextBridge.exposeInMainWorld('api', {
   // Export / Import
   exportConfig: () => ipcRenderer.invoke('config:export'),
   importConfig: () => ipcRenderer.invoke('config:import'),
+
+  // Custom Interactions
+  getInteractions: () => ipcRenderer.invoke('interactions:get'),
+  createInteraction: (name: string) => ipcRenderer.invoke('interactions:create', name),
+  removeInteraction: (id: string) => ipcRenderer.invoke('interactions:remove', id),
+  getInteractionAssets: (id: string) => ipcRenderer.invoke('interactions:get-assets', id),
+
+  // Custom Tools
+  getTools: () => ipcRenderer.invoke('tools:get'),
+  createTool: (name: string) => ipcRenderer.invoke('tools:create', name),
+  removeTool: (id: string) => ipcRenderer.invoke('tools:remove', id),
+  getToolAssets: (id: string) => ipcRenderer.invoke('tools:get-assets', id),
 });

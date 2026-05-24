@@ -54,6 +54,8 @@ export interface AppSettings {
   scheduledTasks: ScheduledTask[];
   shortcuts: MenuShortcuts;
   voice: VoiceSettings;
+  interactions: CustomInteraction[];
+  tools: CustomTool[];
 }
 
 export const DEFAULT_PROVIDERS: Omit<AIProviderConfig, 'apiKey'>[] = [
@@ -132,3 +134,18 @@ export const PET_EMOTION_LABELS: Record<PetEmotion, string> = {
 };
 
 export type PetAnimations = Record<PetEmotion, string[]>;
+
+export interface CustomInteraction {
+  id: string;
+  name: string;
+  animationFile: string; // relative filename in interactions dir
+  audioFile: string; // relative filename in interactions dir
+}
+
+export interface CustomTool {
+  id: string;
+  name: string;
+  iconFile: string; // relative filename in tools dir (cursor image)
+  animationFile: string; // relative filename in tools dir (webp played on click)
+  audioFile: string; // relative filename in tools dir
+}

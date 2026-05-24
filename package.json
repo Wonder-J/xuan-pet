@@ -1,7 +1,7 @@
 {
   "name": "xuanshen",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "AI Desktop Pet",
   "scripts": {
     "start": "bash start.sh",

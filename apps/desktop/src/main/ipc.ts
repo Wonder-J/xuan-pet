@@ -3,7 +3,7 @@ import { copyFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, readFileS
 import { join, extname, basename } from 'path';
 import { is } from '@electron-toolkit/utils';
 import Store from 'electron-store';
-import { AppSettings, IPC_CHANNELS, ChatMessage, PetEmotion, PetAnimations, Skill, ScheduledTask, MenuShortcuts, VoiceSettings } from '@xuanshen/shared';
+import { AppSettings, IPC_CHANNELS, ChatMessage, PetEmotion, PetAnimations, Skill, ScheduledTask, MenuShortcuts, VoiceSettings, CustomInteraction, CustomTool } from '@xuanshen/shared';
 import { chatWithAI } from './ai';
 import { startVoiceService, stopVoiceService, voiceGetModels, voiceDownloadModel, voiceSelectModel, voiceGetVoices, voiceUploadSample, voiceDeleteVoice, voiceSpeak, isVoiceServiceRunning } from './voice';
 
@@ -383,6 +383,157 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
     } catch {
       return false;
     }
+  });
+
+  // ============ Custom Interactions ============
+  function getInteractionsDir(): string {
+    const dir = join(app.getPath('userData'), 'pet-interactions');
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+
+  ipcMain.handle('interactions:get', () => {
+    return store.get('interactions', []) as CustomInteraction[];
+  });
+
+  ipcMain.handle('interactions:create', async (_event, name: string) => {
+    // Pick animation file (webp)
+    const animResult = await dialog.showOpenDialog(win, {
+      title: '选择互动动画 (WebP)',
+      filters: [{ name: '动画', extensions: ['webp', 'gif', 'apng'] }],
+      properties: ['openFile'],
+    });
+    if (animResult.canceled || animResult.filePaths.length === 0) return null;
+
+    // Pick audio file
+    const audioResult = await dialog.showOpenDialog(win, {
+      title: '选择互动音效',
+      filters: [{ name: '音频', extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a'] }],
+      properties: ['openFile'],
+    });
+    if (audioResult.canceled || audioResult.filePaths.length === 0) return null;
+
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const dir = getInteractionsDir();
+    const animExt = extname(animResult.filePaths[0]);
+    const audioExt = extname(audioResult.filePaths[0]);
+    const animFile = `${id}-anim${animExt}`;
+    const audioFile = `${id}-audio${audioExt}`;
+
+    copyFileSync(animResult.filePaths[0], join(dir, animFile));
+    copyFileSync(audioResult.filePaths[0], join(dir, audioFile));
+
+    const interaction: CustomInteraction = { id, name, animationFile: animFile, audioFile };
+    const list = (store.get('interactions', []) as CustomInteraction[]).slice();
+    list.push(interaction);
+    store.set('interactions', list);
+    return interaction;
+  });
+
+  ipcMain.handle('interactions:remove', (_event, id: string) => {
+    const list = (store.get('interactions', []) as CustomInteraction[]).slice();
+    const idx = list.findIndex((i) => i.id === id);
+    if (idx === -1) return false;
+    const item = list[idx];
+    const dir = getInteractionsDir();
+    try { unlinkSync(join(dir, item.animationFile)); } catch { }
+    try { unlinkSync(join(dir, item.audioFile)); } catch { }
+    list.splice(idx, 1);
+    store.set('interactions', list);
+    return true;
+  });
+
+  ipcMain.handle('interactions:get-assets', (_event, id: string) => {
+    const list = store.get('interactions', []) as CustomInteraction[];
+    const item = list.find((i) => i.id === id);
+    if (!item) return null;
+    const dir = getInteractionsDir();
+    return {
+      animationUrl: toAssetURL(join(dir, item.animationFile)),
+      audioUrl: toAssetURL(join(dir, item.audioFile)),
+    };
+  });
+
+  // ============ Custom Tools ============
+  function getToolsDir(): string {
+    const dir = join(app.getPath('userData'), 'pet-tools');
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+
+  ipcMain.handle('tools:get', () => {
+    return store.get('tools', []) as CustomTool[];
+  });
+
+  ipcMain.handle('tools:create', async (_event, name: string) => {
+    // Pick icon image (cursor)
+    const iconResult = await dialog.showOpenDialog(win, {
+      title: '选择工具图标 (显示为鼠标)',
+      filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
+      properties: ['openFile'],
+    });
+    if (iconResult.canceled || iconResult.filePaths.length === 0) return null;
+
+    // Pick animation file (webp played on click)
+    const animResult = await dialog.showOpenDialog(win, {
+      title: '选择点击宠物时播放的动画 (WebP)',
+      filters: [{ name: '动画', extensions: ['webp', 'gif', 'apng'] }],
+      properties: ['openFile'],
+    });
+    if (animResult.canceled || animResult.filePaths.length === 0) return null;
+
+    // Pick audio file
+    const audioResult = await dialog.showOpenDialog(win, {
+      title: '选择点击宠物时播放的音效',
+      filters: [{ name: '音频', extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a'] }],
+      properties: ['openFile'],
+    });
+    if (audioResult.canceled || audioResult.filePaths.length === 0) return null;
+
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const dir = getToolsDir();
+    const iconExt = extname(iconResult.filePaths[0]);
+    const animExt = extname(animResult.filePaths[0]);
+    const audioExt = extname(audioResult.filePaths[0]);
+    const iconFile = `${id}-icon${iconExt}`;
+    const animFile = `${id}-anim${animExt}`;
+    const audioFile = `${id}-audio${audioExt}`;
+
+    copyFileSync(iconResult.filePaths[0], join(dir, iconFile));
+    copyFileSync(animResult.filePaths[0], join(dir, animFile));
+    copyFileSync(audioResult.filePaths[0], join(dir, audioFile));
+
+    const tool: CustomTool = { id, name, iconFile, animationFile: animFile, audioFile };
+    const list = (store.get('tools', []) as CustomTool[]).slice();
+    list.push(tool);
+    store.set('tools', list);
+    return tool;
+  });
+
+  ipcMain.handle('tools:remove', (_event, id: string) => {
+    const list = (store.get('tools', []) as CustomTool[]).slice();
+    const idx = list.findIndex((t) => t.id === id);
+    if (idx === -1) return false;
+    const item = list[idx];
+    const dir = getToolsDir();
+    try { unlinkSync(join(dir, item.iconFile)); } catch { }
+    try { unlinkSync(join(dir, item.animationFile)); } catch { }
+    try { unlinkSync(join(dir, item.audioFile)); } catch { }
+    list.splice(idx, 1);
+    store.set('tools', list);
+    return true;
+  });
+
+  ipcMain.handle('tools:get-assets', (_event, id: string) => {
+    const list = store.get('tools', []) as CustomTool[];
+    const item = list.find((t) => t.id === id);
+    if (!item) return null;
+    const dir = getToolsDir();
+    return {
+      iconUrl: toAssetURL(join(dir, item.iconFile)),
+      animationUrl: toAssetURL(join(dir, item.animationFile)),
+      audioUrl: toAssetURL(join(dir, item.audioFile)),
+    };
   });
 
   // ============ Skills ============
@@ -930,10 +1081,14 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
           skills: settings.skills,
           scheduledTasks: settings.scheduledTasks,
           voice: { modelId: settings.voice?.modelId, selectedVoiceId: settings.voice?.selectedVoiceId },
+          interactions: settings.interactions || [],
+          tools: settings.tools || [],
         },
         animations: collectFilesAsBase64(getAnimationsDir(), /\.(webp|gif|png|apng)$/i),
         voices: collectFilesAsBase64(VOICE_DATA_DIR, /\.(wav|mp3|flac|ogg|m4a)$/i),
         songs: collectFilesAsBase64(getSongsDir(), /\.(mp3|wav|ogg|flac|m4a)$/i),
+        interactions: collectFilesAsBase64(getInteractionsDir(), /\.(webp|gif|apng|mp3|wav|ogg|flac|m4a)$/i),
+        tools: collectFilesAsBase64(getToolsDir(), /\.(webp|gif|apng|png|jpg|jpeg|mp3|wav|ogg|flac|m4a)$/i),
       };
 
       writeFileSync(result.filePath, JSON.stringify(exportData), 'utf-8');
@@ -987,6 +1142,18 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
         restoreFilesFromBase64(data.songs, getSongsDir());
       }
 
+      // 5. Import interactions
+      if (data.interactions && Object.keys(data.interactions).length > 0) {
+        restoreFilesFromBase64(data.interactions, getInteractionsDir());
+      }
+      if (cfg.interactions) store.set('interactions', cfg.interactions);
+
+      // 6. Import tools
+      if (data.tools && Object.keys(data.tools).length > 0) {
+        restoreFilesFromBase64(data.tools, getToolsDir());
+      }
+      if (cfg.tools) store.set('tools', cfg.tools);
+
       // Restart scheduled task timers with new config
       const newTasks = store.get('scheduledTasks', []) as ScheduledTask[];
       for (const [id] of taskTimers) { stopTaskTimer(id); }
@@ -1025,7 +1192,31 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
       {
         label: '🎮 互动',
         accelerator: shortcuts.interact || undefined,
-        click: () => win.webContents.send('menu:action', 'interact'),
+        submenu: [
+          {
+            label: '管理互动',
+            click: () => win.webContents.send('menu:action', 'interact'),
+          },
+          { type: 'separator' },
+          ...((store.get('interactions', []) as CustomInteraction[]).map((interaction) => ({
+            label: interaction.name,
+            click: () => win.webContents.send('menu:action', `play-interaction:${interaction.id}`),
+          }))),
+        ],
+      },
+      {
+        label: '🔧 工具',
+        submenu: [
+          {
+            label: '管理工具',
+            click: () => win.webContents.send('menu:action', 'tools'),
+          },
+          { type: 'separator' },
+          ...((store.get('tools', []) as CustomTool[]).map((tool) => ({
+            label: tool.name,
+            click: () => win.webContents.send('menu:action', `use-tool:${tool.id}`),
+          }))),
+        ],
       },
       {
         label: '⚙️ 设置',

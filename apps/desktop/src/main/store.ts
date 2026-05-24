@@ -38,6 +38,8 @@ export function createStore(): Store<AppSettings> {
         modelId: 'edge_tts',
         selectedVoiceId: '',
       },
+      interactions: [],
+      tools: [],
     },
   });
 }
