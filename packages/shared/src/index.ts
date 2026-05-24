@@ -145,7 +145,7 @@ export interface CustomInteraction {
 export interface CustomTool {
   id: string;
   name: string;
-  iconFile: string; // relative filename in tools dir (cursor image)
+  iconFile: string; // relative filename in tools dir (cursor image, png ≤ 32x32)
   animationFile: string; // relative filename in tools dir (webp played on click)
-  audioFile: string; // relative filename in tools dir
+  audioFile: string; // relative filename in tools dir (sound on click)
 }

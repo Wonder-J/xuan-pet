@@ -466,15 +466,29 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
   });
 
   ipcMain.handle('tools:create', async (_event, name: string) => {
-    // Pick icon image (cursor)
+    // Pick icon image (cursor) — PNG ≤ 32x32 recommended
     const iconResult = await dialog.showOpenDialog(win, {
-      title: '选择工具图标 (显示为鼠标)',
-      filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
+      title: '选择工具图标 (PNG, 建议 32×32 像素)',
+      filters: [{ name: '图片', extensions: ['png', 'cur'] }],
       properties: ['openFile'],
     });
     if (iconResult.canceled || iconResult.filePaths.length === 0) return null;
 
-    // Pick animation file (webp played on click)
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const dir = getToolsDir();
+    const iconExt = extname(iconResult.filePaths[0]);
+    const iconFile = `${id}-icon${iconExt}`;
+
+    copyFileSync(iconResult.filePaths[0], join(dir, iconFile));
+
+    const tool: CustomTool = { id, name, iconFile, animationFile: '', audioFile: '' };
+    const list = (store.get('tools', []) as CustomTool[]).slice();
+    list.push(tool);
+    store.set('tools', list);
+    return tool;
+  });
+
+  ipcMain.handle('tools:update-animation', async (_event, id: string) => {
     const animResult = await dialog.showOpenDialog(win, {
       title: '选择点击宠物时播放的动画 (WebP)',
       filters: [{ name: '动画', extensions: ['webp', 'gif', 'apng'] }],
@@ -482,7 +496,25 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
     });
     if (animResult.canceled || animResult.filePaths.length === 0) return null;
 
-    // Pick audio file
+    const list = (store.get('tools', []) as CustomTool[]).slice();
+    const idx = list.findIndex((t) => t.id === id);
+    if (idx === -1) return null;
+
+    const dir = getToolsDir();
+    // Remove old animation file if exists
+    if (list[idx].animationFile) {
+      try { unlinkSync(join(dir, list[idx].animationFile)); } catch { }
+    }
+
+    const animExt = extname(animResult.filePaths[0]);
+    const animFile = `${id}-anim${animExt}`;
+    copyFileSync(animResult.filePaths[0], join(dir, animFile));
+    list[idx].animationFile = animFile;
+    store.set('tools', list);
+    return list[idx];
+  });
+
+  ipcMain.handle('tools:update-audio', async (_event, id: string) => {
     const audioResult = await dialog.showOpenDialog(win, {
       title: '选择点击宠物时播放的音效',
       filters: [{ name: '音频', extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a'] }],
@@ -490,24 +522,22 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
     });
     if (audioResult.canceled || audioResult.filePaths.length === 0) return null;
 
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const dir = getToolsDir();
-    const iconExt = extname(iconResult.filePaths[0]);
-    const animExt = extname(animResult.filePaths[0]);
-    const audioExt = extname(audioResult.filePaths[0]);
-    const iconFile = `${id}-icon${iconExt}`;
-    const animFile = `${id}-anim${animExt}`;
-    const audioFile = `${id}-audio${audioExt}`;
-
-    copyFileSync(iconResult.filePaths[0], join(dir, iconFile));
-    copyFileSync(animResult.filePaths[0], join(dir, animFile));
-    copyFileSync(audioResult.filePaths[0], join(dir, audioFile));
-
-    const tool: CustomTool = { id, name, iconFile, animationFile: animFile, audioFile };
     const list = (store.get('tools', []) as CustomTool[]).slice();
-    list.push(tool);
+    const idx = list.findIndex((t) => t.id === id);
+    if (idx === -1) return null;
+
+    const dir = getToolsDir();
+    // Remove old audio file if exists
+    if (list[idx].audioFile) {
+      try { unlinkSync(join(dir, list[idx].audioFile)); } catch { }
+    }
+
+    const audioExt = extname(audioResult.filePaths[0]);
+    const audioFile = `${id}-audio${audioExt}`;
+    copyFileSync(audioResult.filePaths[0], join(dir, audioFile));
+    list[idx].audioFile = audioFile;
     store.set('tools', list);
-    return tool;
+    return list[idx];
   });
 
   ipcMain.handle('tools:remove', (_event, id: string) => {
@@ -516,9 +546,9 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
     if (idx === -1) return false;
     const item = list[idx];
     const dir = getToolsDir();
-    try { unlinkSync(join(dir, item.iconFile)); } catch { }
-    try { unlinkSync(join(dir, item.animationFile)); } catch { }
-    try { unlinkSync(join(dir, item.audioFile)); } catch { }
+    if (item.iconFile) try { unlinkSync(join(dir, item.iconFile)); } catch { }
+    if (item.animationFile) try { unlinkSync(join(dir, item.animationFile)); } catch { }
+    if (item.audioFile) try { unlinkSync(join(dir, item.audioFile)); } catch { }
     list.splice(idx, 1);
     store.set('tools', list);
     return true;
@@ -530,9 +560,9 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
     if (!item) return null;
     const dir = getToolsDir();
     return {
-      iconUrl: toAssetURL(join(dir, item.iconFile)),
-      animationUrl: toAssetURL(join(dir, item.animationFile)),
-      audioUrl: toAssetURL(join(dir, item.audioFile)),
+      iconUrl: item.iconFile ? toAssetURL(join(dir, item.iconFile)) : '',
+      animationUrl: item.animationFile ? toAssetURL(join(dir, item.animationFile)) : '',
+      audioUrl: item.audioFile ? toAssetURL(join(dir, item.audioFile)) : '',
     };
   });
 
@@ -1087,8 +1117,8 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
         animations: collectFilesAsBase64(getAnimationsDir(), /\.(webp|gif|png|apng)$/i),
         voices: collectFilesAsBase64(VOICE_DATA_DIR, /\.(wav|mp3|flac|ogg|m4a)$/i),
         songs: collectFilesAsBase64(getSongsDir(), /\.(mp3|wav|ogg|flac|m4a)$/i),
-        interactions: collectFilesAsBase64(getInteractionsDir(), /\.(webp|gif|apng|mp3|wav|ogg|flac|m4a)$/i),
-        tools: collectFilesAsBase64(getToolsDir(), /\.(webp|gif|apng|png|jpg|jpeg|mp3|wav|ogg|flac|m4a)$/i),
+        interactionFiles: collectFilesAsBase64(getInteractionsDir(), /\.(webp|gif|apng|mp3|wav|ogg|flac|m4a)$/i),
+        toolFiles: collectFilesAsBase64(getToolsDir(), /\.(webp|gif|apng|png|cur|mp3|wav|ogg|flac|m4a)$/i),
       };
 
       writeFileSync(result.filePath, JSON.stringify(exportData), 'utf-8');
@@ -1143,14 +1173,16 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
       }
 
       // 5. Import interactions
-      if (data.interactions && Object.keys(data.interactions).length > 0) {
-        restoreFilesFromBase64(data.interactions, getInteractionsDir());
+      const interactionFiles = data.interactionFiles || data.interactions;
+      if (interactionFiles && typeof interactionFiles === 'object' && Object.keys(interactionFiles).length > 0) {
+        restoreFilesFromBase64(interactionFiles, getInteractionsDir());
       }
       if (cfg.interactions) store.set('interactions', cfg.interactions);
 
       // 6. Import tools
-      if (data.tools && Object.keys(data.tools).length > 0) {
-        restoreFilesFromBase64(data.tools, getToolsDir());
+      const toolFileData = data.toolFiles || data.tools;
+      if (toolFileData && typeof toolFileData === 'object' && Object.keys(toolFileData).length > 0) {
+        restoreFilesFromBase64(toolFileData, getToolsDir());
       }
       if (cfg.tools) store.set('tools', cfg.tools);
 

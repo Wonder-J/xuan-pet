@@ -515,36 +515,89 @@ let activeToolId = null;
 let activeToolCursorUrl = null;
 
 async function loadToolsPanel() {
+  document.getElementById('tools-grid-view').style.display = '';
+  document.getElementById('tools-detail-view').style.display = 'none';
+  document.getElementById('tools-panel-title').textContent = '🔧 工具管理';
+
   const list = await api.getTools();
   const container = document.getElementById('tools-list');
   container.innerHTML = '';
   if (list.length === 0) {
     container.innerHTML = '<div style="padding:12px;color:#999;text-align:center;">暂无自定义工具，点击下方按钮添加</div>';
   } else {
-    list.forEach((item) => {
-      const row = document.createElement('div');
-      row.className = 'interact-item';
-      row.innerHTML = `
-        <button class="interact-btn tool-btn" data-tool-id="${item.id}">${item.name}${activeToolId === item.id ? ' ✓' : ''}</button>
-        <button class="remove-btn" data-remove-tool="${item.id}">🗑</button>
+    for (const item of list) {
+      const assets = await api.getToolAssets(item.id);
+      const card = document.createElement('div');
+      card.className = 'tool-card' + (activeToolId === item.id ? ' active' : '');
+      card.innerHTML = `
+        <div class="tool-card-icon" style="background-image: url('${assets?.iconUrl || ''}')"></div>
+        <div class="tool-card-name">${item.name}</div>
+        <div class="tool-card-actions">
+          <button class="tool-use-btn" data-tool-use="${item.id}" title="使用工具">🖱</button>
+          <button class="tool-edit-btn" data-tool-edit="${item.id}" title="编辑">✏️</button>
+          <button class="tool-del-btn" data-tool-del="${item.id}" title="删除">🗑</button>
+        </div>
       `;
-      container.appendChild(row);
-    });
+      container.appendChild(card);
+    }
   }
 
-  // Use tool buttons
-  container.querySelectorAll('[data-tool-id]').forEach((btn) => {
-    btn.addEventListener('click', () => toggleTool(btn.dataset.toolId));
+  // Use tool
+  container.querySelectorAll('[data-tool-use]').forEach((btn) => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); activateTool(btn.dataset.toolUse); });
   });
-  // Remove buttons
-  container.querySelectorAll('[data-remove-tool]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      if (activeToolId === btn.dataset.removeTool) deactivateTool();
-      await api.removeTool(btn.dataset.removeTool);
+  // Edit tool
+  container.querySelectorAll('[data-tool-edit]').forEach((btn) => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); openToolDetail(btn.dataset.toolEdit); });
+  });
+  // Delete tool
+  container.querySelectorAll('[data-tool-del]').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (activeToolId === btn.dataset.toolDel) deactivateTool();
+      await api.removeTool(btn.dataset.toolDel);
       loadToolsPanel();
     });
   });
 }
+
+async function openToolDetail(id) {
+  const list = await api.getTools();
+  const tool = list.find((t) => t.id === id);
+  if (!tool) return;
+
+  document.getElementById('tools-grid-view').style.display = 'none';
+  document.getElementById('tools-detail-view').style.display = '';
+  document.getElementById('tools-panel-title').textContent = `🔧 ${tool.name}`;
+
+  const content = document.getElementById('tool-detail-content');
+  content.innerHTML = `
+    <div class="tool-detail-row">
+      <span>动画 (WebP):</span>
+      <span class="tool-detail-status">${tool.animationFile ? '✅ 已设置' : '❌ 未设置'}</span>
+      <button id="tool-set-anim" class="small-btn">选择文件</button>
+    </div>
+    <div class="tool-detail-row">
+      <span>音效:</span>
+      <span class="tool-detail-status">${tool.audioFile ? '✅ 已设置' : '❌ 未设置'}</span>
+      <button id="tool-set-audio" class="small-btn">选择文件</button>
+    </div>
+    <p class="tool-detail-hint">使用工具后，点击宠物将触发动画和音效</p>
+  `;
+
+  content.querySelector('#tool-set-anim').addEventListener('click', async () => {
+    const result = await api.updateToolAnimation(id);
+    if (result) openToolDetail(id);
+  });
+  content.querySelector('#tool-set-audio').addEventListener('click', async () => {
+    const result = await api.updateToolAudio(id);
+    if (result) openToolDetail(id);
+  });
+}
+
+document.getElementById('tool-back-btn').addEventListener('click', () => {
+  loadToolsPanel();
+});
 
 document.getElementById('add-tool-btn').addEventListener('click', async () => {
   const name = await showInputDialog('输入工具名称');
@@ -553,17 +606,12 @@ document.getElementById('add-tool-btn').addEventListener('click', async () => {
   if (result) loadToolsPanel();
 });
 
-async function toggleTool(id) {
-  if (activeToolId === id) {
-    deactivateTool();
-    loadToolsPanel();
-    return;
-  }
+async function activateTool(id) {
   const assets = await api.getToolAssets(id);
-  if (!assets) return;
+  if (!assets || !assets.iconUrl) return;
   activeToolId = id;
   activeToolCursorUrl = assets.iconUrl;
-  // Set custom cursor on pet area
+  // CSS cursor: url must point to image ≤ 128x128; 32x32 is best practice
   document.getElementById('pet-sprite').style.cursor = `url("${assets.iconUrl}") 16 16, pointer`;
   document.body.style.cursor = `url("${assets.iconUrl}") 16 16, pointer`;
   closeAllPanels();
@@ -579,21 +627,23 @@ function deactivateTool() {
 async function handleToolClick() {
   if (!activeToolId) return false;
   const assets = await api.getToolAssets(activeToolId);
-  if (!assets) return false;
+  if (!assets) { deactivateTool(); return false; }
+
+  // Need at least animation or audio to trigger
+  if (!assets.animationUrl && !assets.audioUrl) { deactivateTool(); return true; }
 
   // Play tool animation and audio
-  const audio = new Audio(assets.audioUrl);
-  showFrame(assets.animationUrl);
+  if (assets.animationUrl) showFrame(assets.animationUrl);
 
-  audio.addEventListener('ended', () => {
-    returnToIdle();
-    deactivateTool();
-  });
-  audio.addEventListener('error', () => {
-    returnToIdle();
-    deactivateTool();
-  });
-  audio.play().catch(() => { returnToIdle(); deactivateTool(); });
+  if (assets.audioUrl) {
+    const audio = new Audio(assets.audioUrl);
+    audio.addEventListener('ended', () => { returnToIdle(); deactivateTool(); });
+    audio.addEventListener('error', () => { returnToIdle(); deactivateTool(); });
+    audio.play().catch(() => { returnToIdle(); deactivateTool(); });
+  } else {
+    // No audio, just show animation for a few seconds
+    setTimeout(() => { returnToIdle(); deactivateTool(); }, 5000);
+  }
   return true;
 }
 

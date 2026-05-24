@@ -46,12 +46,20 @@
     <!-- Tools Panel -->
     <div id="tools-panel" class="panel">
       <div class="panel-header">
-        <span>🔧 工具管理</span>
+        <span id="tools-panel-title">🔧 工具管理</span>
         <button class="close-btn" data-close="tools-panel">✕</button>
       </div>
-      <div class="interact-actions" id="tools-list"></div>
-      <div class="panel-footer">
-        <button id="add-tool-btn" class="action-btn">＋ 新建工具</button>
+      <div id="tools-grid-view">
+        <div class="tools-grid" id="tools-list"></div>
+        <div class="panel-footer">
+          <button id="add-tool-btn" class="action-btn">＋ 新建工具</button>
+        </div>
+      </div>
+      <div id="tools-detail-view" style="display:none;">
+        <div class="tool-detail-content" id="tool-detail-content"></div>
+        <div class="panel-footer">
+          <button id="tool-back-btn" class="action-btn">← 返回</button>
+        </div>
       </div>
     </div>
 

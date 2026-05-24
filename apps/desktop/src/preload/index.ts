@@ -95,6 +95,8 @@ contextBridge.exposeInMainWorld('api', {
   // Custom Tools
   getTools: () => ipcRenderer.invoke('tools:get'),
   createTool: (name: string) => ipcRenderer.invoke('tools:create', name),
+  updateToolAnimation: (id: string) => ipcRenderer.invoke('tools:update-animation', id),
+  updateToolAudio: (id: string) => ipcRenderer.invoke('tools:update-audio', id),
   removeTool: (id: string) => ipcRenderer.invoke('tools:remove', id),
   getToolAssets: (id: string) => ipcRenderer.invoke('tools:get-assets', id),
 });
