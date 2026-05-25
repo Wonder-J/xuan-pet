@@ -1,5 +1,5 @@
 import { BrowserWindow, ipcMain, Menu, app, dialog, screen, globalShortcut, clipboard } from 'electron';
-import { copyFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, readFileSync, writeFileSync } from 'fs';
+import { copyFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, readFileSync, writeFileSync, rmSync } from 'fs';
 import { join, extname, basename } from 'path';
 import { is } from '@electron-toolkit/utils';
 import Store from 'electron-store';
@@ -1147,6 +1147,19 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
     });
     if (result.canceled || result.filePaths.length === 0) return { canceled: true };
 
+    // Ask user: override or append
+    const modeResult = await dialog.showMessageBox(win, {
+      type: 'question',
+      title: '导入模式',
+      message: '请选择导入方式',
+      detail: '覆盖：清除现有配置后导入新配置\n添加：在现有配置基础上追加新内容',
+      buttons: ['覆盖导入', '添加导入', '取消'],
+      defaultId: 1,
+      cancelId: 2,
+    });
+    if (modeResult.response === 2) return { canceled: true };
+    const isOverride = modeResult.response === 0;
+
     try {
       const raw = readFileSync(result.filePaths[0], 'utf-8');
       const data = JSON.parse(raw);
@@ -1155,47 +1168,97 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
         return { error: '无效的配置包文件' };
       }
 
-      // 1. Import config
       const cfg = data.config;
+
+      // 1. Import config
       if (cfg.systemPrompt) store.set('systemPrompt', cfg.systemPrompt);
       if (cfg.petSize) store.set('petSize', cfg.petSize);
       if (cfg.petOpacity !== undefined) store.set('petOpacity', cfg.petOpacity);
       if (cfg.quickChatPlaceholder) store.set('quickChatPlaceholder', cfg.quickChatPlaceholder);
-      if (cfg.skills) store.set('skills', cfg.skills);
-      if (cfg.scheduledTasks) store.set('scheduledTasks', cfg.scheduledTasks);
+
+      if (cfg.skills) {
+        if (isOverride) {
+          store.set('skills', cfg.skills);
+        } else {
+          const existing = (store.get('skills', []) as Skill[]).slice();
+          store.set('skills', [...existing, ...cfg.skills]);
+        }
+      }
+      if (cfg.scheduledTasks) {
+        if (isOverride) {
+          store.set('scheduledTasks', cfg.scheduledTasks);
+        } else {
+          const existing = (store.get('scheduledTasks', []) as ScheduledTask[]).slice();
+          store.set('scheduledTasks', [...existing, ...cfg.scheduledTasks]);
+        }
+      }
       if (cfg.voice) {
         const currentVoice = store.get('voice') as VoiceSettings;
         store.set('voice', { ...currentVoice, modelId: cfg.voice.modelId || currentVoice.modelId, selectedVoiceId: cfg.voice.selectedVoiceId || currentVoice.selectedVoiceId });
       }
 
       // 2. Import animations
+      if (isOverride && existsSync(getAnimationsDir())) {
+        rmSync(getAnimationsDir(), { recursive: true, force: true });
+        mkdirSync(getAnimationsDir(), { recursive: true });
+      }
       if (data.animations && Object.keys(data.animations).length > 0) {
-        restoreFilesFromBase64(data.animations, getAnimationsDir());
+        restoreFilesFromBase64(data.animations, getAnimationsDir(), isOverride);
       }
 
       // 3. Import voices
+      if (isOverride && existsSync(VOICE_DATA_DIR)) {
+        rmSync(VOICE_DATA_DIR, { recursive: true, force: true });
+        mkdirSync(VOICE_DATA_DIR, { recursive: true });
+      }
       if (data.voices && Object.keys(data.voices).length > 0) {
-        restoreFilesFromBase64(data.voices, VOICE_DATA_DIR);
+        restoreFilesFromBase64(data.voices, VOICE_DATA_DIR, isOverride);
       }
 
       // 4. Import songs
+      if (isOverride && existsSync(getSongsDir())) {
+        rmSync(getSongsDir(), { recursive: true, force: true });
+        mkdirSync(getSongsDir(), { recursive: true });
+      }
       if (data.songs && Object.keys(data.songs).length > 0) {
-        restoreFilesFromBase64(data.songs, getSongsDir());
+        restoreFilesFromBase64(data.songs, getSongsDir(), isOverride);
       }
 
       // 5. Import interactions
+      if (isOverride && existsSync(getInteractionsDir())) {
+        rmSync(getInteractionsDir(), { recursive: true, force: true });
+        mkdirSync(getInteractionsDir(), { recursive: true });
+      }
       const interactionFiles = data.interactionFiles || data.interactions;
       if (interactionFiles && typeof interactionFiles === 'object' && Object.keys(interactionFiles).length > 0) {
-        restoreFilesFromBase64(interactionFiles, getInteractionsDir());
+        restoreFilesFromBase64(interactionFiles, getInteractionsDir(), isOverride);
       }
-      if (cfg.interactions) store.set('interactions', cfg.interactions);
+      if (cfg.interactions) {
+        if (isOverride) {
+          store.set('interactions', cfg.interactions);
+        } else {
+          const existing = (store.get('interactions', []) as CustomInteraction[]).slice();
+          store.set('interactions', [...existing, ...cfg.interactions]);
+        }
+      }
 
       // 6. Import tools
+      if (isOverride && existsSync(getToolsDir())) {
+        rmSync(getToolsDir(), { recursive: true, force: true });
+        mkdirSync(getToolsDir(), { recursive: true });
+      }
       const toolFileData = data.toolFiles || data.tools;
       if (toolFileData && typeof toolFileData === 'object' && Object.keys(toolFileData).length > 0) {
-        restoreFilesFromBase64(toolFileData, getToolsDir());
+        restoreFilesFromBase64(toolFileData, getToolsDir(), isOverride);
       }
-      if (cfg.tools) store.set('tools', cfg.tools);
+      if (cfg.tools) {
+        if (isOverride) {
+          store.set('tools', cfg.tools);
+        } else {
+          const existing = (store.get('tools', []) as CustomTool[]).slice();
+          store.set('tools', [...existing, ...cfg.tools]);
+        }
+      }
 
       // Restart scheduled task timers with new config
       const newTasks = store.get('scheduledTasks', []) as ScheduledTask[];
