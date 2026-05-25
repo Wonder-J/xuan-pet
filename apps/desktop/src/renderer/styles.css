@@ -498,36 +498,77 @@ body {
 .tools-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 10px;
   padding: 12px;
   flex: 1;
   overflow-y: auto;
   min-height: 0;
 }
 
+.tools-empty {
+  grid-column: 1 / -1;
+  padding: 24px 12px;
+  color: #999;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
 .tool-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 10px 6px;
+  padding: 12px 8px 10px;
   border: 1px solid #eee;
-  border-radius: 10px;
+  border-radius: 12px;
   background: white;
   transition: all 0.2s;
+  position: relative;
+}
+
+.tool-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
 .tool-card.active {
   border-color: #7c5cfc;
-  background: #f5f0ff;
+  background: #faf8ff;
+}
+
+.tool-card-top {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  position: relative;
+  margin-bottom: 8px;
 }
 
 .tool-card-icon {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
-  margin-bottom: 6px;
+  border-radius: 6px;
+  background-color: #f5f5f5;
+}
+
+.tool-del-btn {
+  position: absolute;
+  top: -4px;
+  right: -2px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+  color: #ccc;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: color 0.2s;
+}
+
+.tool-del-btn:hover {
+  color: #e55;
 }
 
 .tool-card-name {
@@ -536,27 +577,65 @@ body {
   text-align: center;
   margin-bottom: 6px;
   word-break: break-all;
+  font-weight: 500;
 }
 
-.tool-card-actions {
+.tool-card-badges {
   display: flex;
   gap: 4px;
+  margin-bottom: 8px;
 }
 
-.tool-card-actions button {
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  font-size: 12px;
-  padding: 2px 5px;
+.badge {
+  font-size: 10px;
+  padding: 1px 5px;
   border-radius: 4px;
-  opacity: 0.7;
-  transition: opacity 0.2s;
+  background: #f0f0f0;
+  color: #999;
 }
 
-.tool-card-actions button:hover {
-  opacity: 1;
-  background: #f0f0f0;
+.badge-ok {
+  background: #e8f5e9;
+  color: #4caf50;
+}
+
+.badge-none {
+  background: #f5f5f5;
+  color: #bbb;
+}
+
+.tool-card-btns {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+}
+
+.tool-card-btns button {
+  flex: 1;
+  padding: 5px 0;
+  border: 1px solid #eee;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.2s;
+}
+
+.tool-card-btns .tool-use-btn {
+  color: #7c5cfc;
+  border-color: #e8e0ff;
+}
+
+.tool-card-btns .tool-use-btn:hover {
+  background: #f5f0ff;
+}
+
+.tool-card-btns .tool-edit-btn {
+  color: #666;
+}
+
+.tool-card-btns .tool-edit-btn:hover {
+  background: #f5f5f5;
 }
 
 /* Tool Detail */

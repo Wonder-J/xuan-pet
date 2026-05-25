@@ -559,8 +559,19 @@ export function setupIPC(win: BrowserWindow, store: Store<AppSettings>): void {
     const item = list.find((t) => t.id === id);
     if (!item) return null;
     const dir = getToolsDir();
+    // For cursor, we need a data URL since custom protocols don't work with CSS cursor
+    let iconDataUrl = '';
+    if (item.iconFile) {
+      const iconPath = join(dir, item.iconFile);
+      if (existsSync(iconPath)) {
+        const ext = extname(item.iconFile).toLowerCase().replace('.', '');
+        const mime = ext === 'cur' ? 'image/x-icon' : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+        iconDataUrl = `data:${mime};base64,${readFileSync(iconPath).toString('base64')}`;
+      }
+    }
     return {
       iconUrl: item.iconFile ? toAssetURL(join(dir, item.iconFile)) : '',
+      iconDataUrl,
       animationUrl: item.animationFile ? toAssetURL(join(dir, item.animationFile)) : '',
       audioUrl: item.audioFile ? toAssetURL(join(dir, item.audioFile)) : '',
     };

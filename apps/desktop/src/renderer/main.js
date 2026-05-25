@@ -31,6 +31,22 @@ const ANIM_FRAME_DURATION = 200;
 const IDLE_INTERVAL = 10000;
 const ACTION_DURATION = 7000; // all actions last 7 seconds
 
+// Global action state — allows interrupting any running action
+let _actionAudio = null;
+let _actionTimeout = null;
+
+function interruptCurrentAction() {
+  if (_actionAudio) {
+    _actionAudio.pause();
+    _actionAudio.currentTime = 0;
+    _actionAudio = null;
+  }
+  if (_actionTimeout) {
+    clearTimeout(_actionTimeout);
+    _actionTimeout = null;
+  }
+}
+
 // ============ DOM Refs ============
 const petContainer = document.getElementById('pet-container');
 const petSprite = document.getElementById('pet-sprite');
@@ -171,6 +187,7 @@ petContainer.addEventListener('click', async (e) => {
 // ============ Double-click → Random Animation ============
 petContainer.addEventListener('dblclick', (e) => {
   e.preventDefault();
+  interruptCurrentAction();
   // Collect all uploaded frames except action-type animations
   const allFrames = [];
   for (const emotion of Object.keys(petAnimations)) {
@@ -184,7 +201,7 @@ petContainer.addEventListener('dblclick', (e) => {
     const randomFrame = allFrames[Math.floor(Math.random() * allFrames.length)];
     showFrame(randomFrame);
     // Return to default after animation plays
-    setTimeout(() => returnToIdle(), ACTION_DURATION);
+    _actionTimeout = setTimeout(() => returnToIdle(), ACTION_DURATION);
   }
 });
 
@@ -250,7 +267,7 @@ api.onMenuAction(async (action) => {
     playInteraction(id);
   } else if (action.startsWith('use-tool:')) {
     const id = action.replace('use-tool:', '');
-    toggleTool(id);
+    activateTool(id);
   } else if (action === 'settings') {
     openPanel('settings-panel');
     loadSettings();
@@ -495,19 +512,23 @@ document.getElementById('add-interaction-btn').addEventListener('click', async (
 async function playInteraction(id) {
   const assets = await api.getInteractionAssets(id);
   if (!assets) return;
+  interruptCurrentAction();
   closeAllPanels();
 
   // Play animation (loop until audio ends)
   const audio = new Audio(assets.audioUrl);
+  _actionAudio = audio;
   showFrame(assets.animationUrl);
 
   audio.addEventListener('ended', () => {
+    _actionAudio = null;
     returnToIdle();
   });
   audio.addEventListener('error', () => {
+    _actionAudio = null;
     returnToIdle();
   });
-  audio.play().catch(() => returnToIdle());
+  audio.play().catch(() => { _actionAudio = null; returnToIdle(); });
 }
 
 // ============ Custom Tools ============
@@ -523,19 +544,28 @@ async function loadToolsPanel() {
   const container = document.getElementById('tools-list');
   container.innerHTML = '';
   if (list.length === 0) {
-    container.innerHTML = '<div style="padding:12px;color:#999;text-align:center;">暂无自定义工具，点击下方按钮添加</div>';
+    container.innerHTML = '<div class="tools-empty">暂无自定义工具<br><small>点击下方按钮添加</small></div>';
   } else {
     for (const item of list) {
       const assets = await api.getToolAssets(item.id);
+      const isActive = activeToolId === item.id;
+      const hasAnim = !!item.animationFile;
+      const hasAudio = !!item.audioFile;
       const card = document.createElement('div');
-      card.className = 'tool-card' + (activeToolId === item.id ? ' active' : '');
+      card.className = 'tool-card' + (isActive ? ' active' : '');
       card.innerHTML = `
-        <div class="tool-card-icon" style="background-image: url('${assets?.iconUrl || ''}')"></div>
+        <div class="tool-card-top">
+          <div class="tool-card-icon"${assets?.iconUrl ? ` style="background-image: url('${assets.iconUrl}')"` : ''}></div>
+          <button class="tool-del-btn" data-tool-del="${item.id}" title="删除">✕</button>
+        </div>
         <div class="tool-card-name">${item.name}</div>
-        <div class="tool-card-actions">
-          <button class="tool-use-btn" data-tool-use="${item.id}" title="使用工具">🖱</button>
-          <button class="tool-edit-btn" data-tool-edit="${item.id}" title="编辑">✏️</button>
-          <button class="tool-del-btn" data-tool-del="${item.id}" title="删除">🗑</button>
+        <div class="tool-card-badges">
+          <span class="badge ${hasAnim ? 'badge-ok' : 'badge-none'}">${hasAnim ? '动画 ✓' : '动画'}</span>
+          <span class="badge ${hasAudio ? 'badge-ok' : 'badge-none'}">${hasAudio ? '音效 ✓' : '音效'}</span>
+        </div>
+        <div class="tool-card-btns">
+          <button class="tool-use-btn" data-tool-use="${item.id}">${isActive ? '✓ 使用中' : '使用'}</button>
+          <button class="tool-edit-btn" data-tool-edit="${item.id}">编辑</button>
         </div>
       `;
       container.appendChild(card);
@@ -607,13 +637,17 @@ document.getElementById('add-tool-btn').addEventListener('click', async () => {
 });
 
 async function activateTool(id) {
+  if (activeToolId === id) {
+    deactivateTool();
+    return;
+  }
   const assets = await api.getToolAssets(id);
-  if (!assets || !assets.iconUrl) return;
+  if (!assets || !assets.iconDataUrl) return;
   activeToolId = id;
-  activeToolCursorUrl = assets.iconUrl;
-  // CSS cursor: url must point to image ≤ 128x128; 32x32 is best practice
-  document.getElementById('pet-sprite').style.cursor = `url("${assets.iconUrl}") 16 16, pointer`;
-  document.body.style.cursor = `url("${assets.iconUrl}") 16 16, pointer`;
+  activeToolCursorUrl = assets.iconDataUrl;
+  // Use data URL for CSS cursor (custom protocol doesn't work with cursor)
+  document.getElementById('pet-sprite').style.cursor = `url("${assets.iconDataUrl}") 16 16, pointer`;
+  document.body.style.cursor = `url("${assets.iconDataUrl}") 16 16, pointer`;
   closeAllPanels();
 }
 
@@ -626,6 +660,7 @@ function deactivateTool() {
 
 async function handleToolClick() {
   if (!activeToolId) return false;
+  interruptCurrentAction();
   const assets = await api.getToolAssets(activeToolId);
   if (!assets) { deactivateTool(); return false; }
 
@@ -637,12 +672,13 @@ async function handleToolClick() {
 
   if (assets.audioUrl) {
     const audio = new Audio(assets.audioUrl);
-    audio.addEventListener('ended', () => { returnToIdle(); deactivateTool(); });
-    audio.addEventListener('error', () => { returnToIdle(); deactivateTool(); });
-    audio.play().catch(() => { returnToIdle(); deactivateTool(); });
+    _actionAudio = audio;
+    audio.addEventListener('ended', () => { _actionAudio = null; returnToIdle(); deactivateTool(); });
+    audio.addEventListener('error', () => { _actionAudio = null; returnToIdle(); deactivateTool(); });
+    audio.play().catch(() => { _actionAudio = null; returnToIdle(); deactivateTool(); });
   } else {
     // No audio, just show animation for a few seconds
-    setTimeout(() => { returnToIdle(); deactivateTool(); }, 5000);
+    _actionTimeout = setTimeout(() => { returnToIdle(); deactivateTool(); }, 5000);
   }
   return true;
 }
@@ -800,7 +836,9 @@ function playEmotion(emotion, duration) {
 
 function showFrame(assetURL) {
   petSprite.classList.remove('idle', 'bounce', 'anim-angry', 'anim-sad', 'anim-sleep');
-  petSprite.style.backgroundImage = `url("${assetURL}")`;
+  // Append cache-buster to force WebP animation to restart from beginning
+  const separator = assetURL.includes('?') ? '&' : '?';
+  petSprite.style.backgroundImage = `url("${assetURL}${separator}_t=${Date.now()}")`;
 }
 
 function returnToIdle() {
